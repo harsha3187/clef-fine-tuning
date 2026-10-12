@@ -1,0 +1,20 @@
+# The build context for the application image. Keep it small: data/ alone is several GB.
+**/__pycache__
+**/*.pyc
+.git
+.venv
+.env
+.pytest_cache
+.ruff_cache
+.test-work
+.vscode
+.ipynb_checkpoints
+outputs
+notebooks
+models
+docs
+*.docx
+
+# Everything under data/ except the measured endpoint registry the selector reads
+data/*
+!data/registry

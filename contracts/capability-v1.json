@@ -1,0 +1,20 @@
+{
+  "low": {
+    "description": "A small, inexpensive model can serve this request fully and reliably. Serving it needs no real analysis: the request is well specified and self-contained, and the answer follows directly from what is written. Typical work: one lookup, status check or tool call whose arguments are all stated; extracting, copying or reformatting text that is given; classifying a message into obvious categories; translating or rewording a sentence; a short factual answer or a friendly, routine reply; filling a simple template. Signs: one operation, nothing to combine, no rule to apply beyond the obvious, no hidden step, and a slightly imperfect answer would cause little harm. A request can be long or contain technical words and still be low if the work itself is mechanical.",
+    "tools": [],
+    "can_write": false,
+    "success_criteria": "Choose low only when a small model would answer correctly with no coordination of facts or rules. Do not choose low for anything with hidden steps, constraints or consequences."
+  },
+  "medium": {
+    "description": "A mid-sized, capable model is needed, and is enough. Serving it well needs some analysis, but within clear bounds: the rules, inputs and goal are given and the reasoning is shallow to moderate. Typical work: several connected steps where one result feeds the next; combining facts from more than one source; applying a stated policy, formula or threshold; exact arithmetic or date calculations over a few steps; reading a table or query and working out the result; comparing a few options against criteria; planning a short sequence of tool calls; handling two or three requests in one message; looking up missing details before acting; tracing short code or ordinary coding with clear requirements; writing a careful message, summary or structured document from supplied material. Signs: more than one operation, a rule to apply correctly, something to look up before acting, or an exact answer that a small model often gets wrong. Little ambiguity, and a mistake has low to moderate consequences.",
+    "tools": [],
+    "can_write": false,
+    "success_criteria": "Choose medium for multi-step but well-bounded work where the rules are given and the reasoning is shallow. Use high when the reasoning is deep, constraints interact, or a mistake is costly."
+  },
+  "high": {
+    "description": "The strongest reasoning model is warranted, because deep analysis is unavoidable and a mid-sized model is likely to fail or to miss an important constraint. Typical work: planning or designing under many interacting constraints; resolving rules that conflict or exceptions to exceptions; long chains of dependent reasoning where one slip ruins the result; logic puzzles and proofs; debugging subtle, concurrent or distributed code; ambiguous requirements that need judgement about what the person really needs; decisions with large financial, legal, safety or customer consequences where a wrong answer is costly; requests that must weigh competing goals and justify the trade-off. Signs: several constraints pull against each other, the correct answer is not obvious even to an expert reading carefully, or being wrong is expensive. Length, technical vocabulary or an urgent tone alone do not make a request high.",
+    "tools": [],
+    "can_write": false,
+    "success_criteria": "Choose high only when a mid-sized model is likely to fail or to miss important constraints. Length or technical vocabulary alone does not make a request high."
+  }
+}

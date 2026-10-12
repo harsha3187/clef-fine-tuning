@@ -1,0 +1,106 @@
+{
+  "schema": "structured-output-v1",
+  "probed": "2026-10-12T06:21Z",
+  "note": "Usable JSON from the planner and reviewer prompts, as [usable, asked].",
+  "endpoints": {
+    "gpt-5.6-luna": {
+      "planner": [
+        12,
+        12
+      ],
+      "judge": [
+        6,
+        6
+      ],
+      "errors": []
+    },
+    "gpt-5.4-nano": {
+      "planner": [
+        12,
+        12
+      ],
+      "judge": [
+        6,
+        6
+      ],
+      "errors": []
+    },
+    "llama-4-maverick": {
+      "planner": [
+        0,
+        12
+      ],
+      "judge": [
+        0,
+        6
+      ],
+      "errors": []
+    },
+    "gpt-oss-120b": {
+      "planner": [
+        8,
+        12
+      ],
+      "judge": [
+        0,
+        6
+      ],
+      "errors": []
+    },
+    "deepseek-v4-flash": {
+      "planner": [
+        12,
+        12
+      ],
+      "judge": [
+        6,
+        6
+      ],
+      "errors": []
+    },
+    "gpt-4.1": {
+      "planner": [
+        12,
+        12
+      ],
+      "judge": [
+        6,
+        6
+      ],
+      "errors": []
+    },
+    "deepseek-v4-pro": {
+      "planner": [
+        12,
+        12
+      ],
+      "judge": [
+        6,
+        6
+      ],
+      "errors": []
+    },
+    "gpt-5.6-terra": {
+      "planner": [
+        12,
+        12
+      ],
+      "judge": [
+        6,
+        6
+      ],
+      "errors": []
+    },
+    "gpt-5.6-sol": {
+      "planner": [
+        12,
+        12
+      ],
+      "judge": [
+        6,
+        6
+      ],
+      "errors": []
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "format": 1,
+  "base": {
+    "checkpoint": "Cloudflare/clef-flash",
+    "revision": "17f0b0ad64efb65d273590632833508766b2aae6",
+    "variant": "flash"
+  },
+  "temperature": 1.9436062027063157,
+  "best_epoch": 3,
+  "created_utc": "2026-10-09T13:53:07.325701+00:00",
+  "bundle_sha256": "ecb6aaeda93dec2a7fb1976d104696572524b2b25991e6b9be0bf806162c9e2c",
+  "label_source": {
+    "kind": "external public routing datasets",
+    "sources": [
+      "llmrouterbench",
+      "xroutebench",
+      "scope60k",
+      "r2bench"
+    ],
+    "rules": {
+      "pass_at": 0.7,
+      "relative_pass": 0.8,
+      "low_share": 0.5,
+      "other_share": 0.5,
+      "min_models": 6,
+      "min_per_group": 2,
+      "r2_budget": 2000
+    },
+    "prompt_version": "p2",
+    "per_dataset_cap": 150,
+    "max_state_chars": 3000,
+    "skill_labels": "none (skill loss is skipped for these rows)",
+    "cleaning": {
+      "drop_subjective": true,
+      "partial_credit_share": 0.4,
+      "unmeasurable_threshold": 0.25,
+      "drop_all_fail_in_hard_pools": true
+    },
+    "dropped_by_cleaning": {
+      "llmrouterbench: subjective dataset": 3428,
+      "llmrouterbench: every model scored 0 in a pool where the best models barely score": 1003,
+      "xroutebench: every model scored 0 in a pool where the best models barely score": 388,
+      "r2bench: judge gave partial credit (open-ended)": 7659
+    },
+    "duplicates_dropped": 262,
+    "same_text_after_truncation_dropped": 2,
+    "licenses": {
+      "llmrouterbench": "not stated on the dataset page; prompts come from public benchmarks",
+      "xroutebench": "not stated on the dataset card; prompts come from public benchmarks",
+      "scope60k": "apache-2.0",
+      "r2bench": "mit (rights to upstream prompts stay with their providers)"
+    },
+    "note": "Rights to the original prompts remain with the upstream benchmark providers; use for research only."
+  },
+  "heads": [
+    "route",
+    "skill"
+  ],
+  "config": {
+    "variant": "flash",
+    "model_revision": "17f0b0ad64efb65d273590632833508766b2aae6",
+    "epochs": 3,
+    "micro_batch_size": 8,
+    "gradient_accumulation_steps": 2,
+    "lora_rank": 32,
+    "lora_alpha": 64,
+    "lora_dropout": 0.05,
+    "lora_learning_rate": 0.0001,
+    "head_learning_rate": 5e-05,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.05,
+    "max_grad_norm": 1.0,
+    "label_smoothing": 0.05,
+    "brier_weight": 1.0,
+    "skill_loss_weight": 0.5,
+    "max_length": 2048,
+    "eval_max_length": 4096,
+    "log_every_steps": 5,
+    "seed": 42,
+    "smoke": false,
+    "max_train_steps": null,
+    "validation_limit_per_track": null,
+    "calibration_limit_per_track": null
+  },
+  "fit_data": "calibration partition only"
+}

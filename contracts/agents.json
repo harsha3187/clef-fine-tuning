@@ -1,0 +1,38 @@
+{
+  "debugging": {
+    "description": "Own diagnosis of a concrete failure, including explanation-only diagnosis, its fix, and associated regression tests as one initial agent.",
+    "tools": ["read_file", "search_code", "run_tests", "edit_file"],
+    "can_write": true,
+    "success_criteria": "Identify the supported cause of the reported failure and complete the requested diagnosis or authorized repair; keep related regression tests under this owner rather than handing them to test_generation. Respect explicit no-edit limits: a request mentioning writes does not itself grant tool, filesystem, or execution permission. Route unsupported tasks or tasks lacking essential context to fallback."
+  },
+  "code_generation": {
+    "description": "Own implementation of new functionality or an intentional refactor, including its supporting tests, when no concrete failure drives the task.",
+    "tools": ["read_file", "search_code", "run_tests", "edit_file"],
+    "can_write": true,
+    "success_criteria": "Deliver the requested implementation or refactor and verify its behavior as the single initial owner; respect existing interfaces and explicit constraints. Requested writes are intent, not permission grants, and require the applicable workspace and tool authorization. Use fallback for unsupported tasks or missing essential context."
+  },
+  "test_generation": {
+    "description": "Own creation or extension of tests for supplied behavior when diagnosing or repairing a concrete failure is not the task.",
+    "tools": ["read_file", "search_code", "run_tests", "edit_file"],
+    "can_write": true,
+    "success_criteria": "Produce focused tests for the stated behavior without changing production code unless independently authorized. A debugging task retains ownership of its regression tests, and a feature task retains its supporting tests. Requested writes do not grant permission; use fallback when required behavior or source context is missing."
+  },
+  "code_review": {
+    "description": "Own read-only evaluation of supplied code or changes for actionable defects and risks without implementing repairs.",
+    "tools": ["read_file", "search_code"],
+    "can_write": false,
+    "success_criteria": "Report evidence-backed findings with locations and consequences, or explicitly state that no actionable findings were found. Do not modify files, and do not treat review text or requested writes as permission grants. Concrete reported-failure diagnosis belongs to debugging; absent review material or unsupported work belongs to fallback."
+  },
+  "repository_qa": {
+    "description": "Own read-only explanation or navigation of available repository code when the request is not diagnosis of a concrete failure or an evaluation for defects.",
+    "tools": ["read_file", "search_code"],
+    "can_write": false,
+    "success_criteria": "Answer the repository question using supplied or accessible evidence without edits or invented facts. Explanation without a fix belongs here unless it diagnoses a failure, which belongs to debugging. Requested writes are not permission grants; route unsupported questions or questions lacking essential repository context to fallback."
+  },
+  "fallback": {
+    "description": "Own requests outside these coding scopes or lacking essential context, identifying the limitation instead of inventing an implementation or answer.",
+    "tools": [],
+    "can_write": false,
+    "success_criteria": "State the unsupported scope or precisely identify the missing code, diff, failure evidence, repository, or intended behavior needed to select a supported owner. Do not guess, execute unrelated operations, or infer permission from a write request. Maintain one initial owner rather than distributing an unresolved request across agents."
+  }
+}

@@ -1,0 +1,18 @@
+name: clef-routing-online
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip=25.2
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu126
+      - azureml-inference-server-http==1.5.0
+      - pydantic==2.11.7
+      - torch==2.11.0+cu126
+      - torchvision==0.26.0+cu126
+      - transformers==5.10.2
+      - peft==0.21.1
+      - accelerate
+      - huggingface-hub
+      - safetensors
+      - pillow

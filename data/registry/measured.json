@@ -1,0 +1,809 @@
+{
+ "schema": 1,
+ "version": "measured-e48f4b9a69ce+8647fdfa4935+93afa342a382",
+ "built": "2026-10-09",
+ "source": {
+  "tasks_hash": "e48f4b9a69ce+8647fdfa4935+93afa342a382",
+  "attempts": 17073,
+  "labelled_tasks": 1697,
+  "note": "Pass counts by skill and tier from the capability benchmark; latency is a fit on short non-streaming calls."
+ },
+ "endpoints": [
+  {
+   "id": "gpt-5.6-luna",
+   "deployment": "gpt-5.6-luna",
+   "price_in": 0.2,
+   "price_out": 1.2,
+   "supports_tools": true,
+   "verified_price": true,
+   "api": "responses",
+   "mean_out_tokens": 145.3,
+   "lat_base_ms": 1403.8,
+   "lat_per_token_ms": 13.87,
+   "cells": {
+    "extraction": {
+     "low": [
+      242.0,
+      246
+     ],
+     "medium": [
+      31.0,
+      32
+     ],
+     "high": [
+      2.0,
+      2
+     ]
+    },
+    "reasoning": {
+     "medium": [
+      329.0,
+      333
+     ],
+     "high": [
+      5.0,
+      28
+     ],
+     "low": [
+      197.0,
+      199
+     ]
+    },
+    "coding": {
+     "low": [
+      136.0,
+      141
+     ],
+     "medium": [
+      159.0,
+      160
+     ],
+     "high": [
+      13.0,
+      24
+     ]
+    },
+    "tools": {
+     "low": [
+      234.0,
+      235
+     ],
+     "medium": [
+      55.0,
+      57
+     ]
+    },
+    "writing": {
+     "low": [
+      182.0,
+      185
+     ],
+     "medium": [
+      38.0,
+      48
+     ],
+     "high": [
+      1.0,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "id": "gpt-5.4-nano",
+   "deployment": "gpt-5.4-nano",
+   "price_in": 0.2,
+   "price_out": 1.25,
+   "supports_tools": true,
+   "verified_price": true,
+   "api": "responses",
+   "mean_out_tokens": 62.5,
+   "lat_base_ms": 1797.2,
+   "lat_per_token_ms": 23.078,
+   "cells": {
+    "extraction": {
+     "low": [
+      226.0,
+      246
+     ],
+     "medium": [
+      1.0,
+      32
+     ],
+     "high": [
+      0.0,
+      2
+     ]
+    },
+    "reasoning": {
+     "medium": [
+      12.0,
+      333
+     ],
+     "high": [
+      0.0,
+      28
+     ],
+     "low": [
+      104.0,
+      199
+     ]
+    },
+    "coding": {
+     "low": [
+      82.0,
+      141
+     ],
+     "medium": [
+      13.0,
+      160
+     ],
+     "high": [
+      0.0,
+      24
+     ]
+    },
+    "tools": {
+     "low": [
+      213.0,
+      235
+     ],
+     "medium": [
+      13.0,
+      57
+     ]
+    },
+    "writing": {
+     "low": [
+      172.0,
+      185
+     ],
+     "medium": [
+      12.0,
+      48
+     ],
+     "high": [
+      2.0,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "id": "phi-4",
+   "deployment": "phi-4",
+   "price_in": 0.125,
+   "price_out": 0.5,
+   "supports_tools": false,
+   "verified_price": true,
+   "api": "chat",
+   "mean_out_tokens": 40.7,
+   "lat_base_ms": 257.5,
+   "lat_per_token_ms": 34.818,
+   "cells": {
+    "extraction": {
+     "low": [
+      217.0,
+      246
+     ],
+     "medium": [
+      2.0,
+      32
+     ],
+     "high": [
+      0.0,
+      2
+     ]
+    },
+    "reasoning": {
+     "medium": [
+      13.0,
+      333
+     ],
+     "high": [
+      0.0,
+      28
+     ],
+     "low": [
+      87.0,
+      199
+     ]
+    },
+    "coding": {
+     "low": [
+      101.0,
+      141
+     ],
+     "medium": [
+      4.0,
+      160
+     ],
+     "high": [
+      0.0,
+      24
+     ]
+    },
+    "tools": {
+     "low": [
+      156.0,
+      160
+     ]
+    },
+    "writing": {
+     "low": [
+      106.0,
+      185
+     ],
+     "medium": [
+      4.0,
+      48
+     ],
+     "high": [
+      0.0,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "id": "llama-4-maverick",
+   "deployment": "llama-4-maverick",
+   "price_in": 0.25,
+   "price_out": 1.0,
+   "supports_tools": true,
+   "verified_price": true,
+   "api": "responses",
+   "mean_out_tokens": 385.6,
+   "lat_base_ms": 4149.0,
+   "lat_per_token_ms": 1.839,
+   "cells": {
+    "extraction": {
+     "low": [
+      80.0,
+      246
+     ],
+     "medium": [
+      1.0,
+      32
+     ],
+     "high": [
+      0.0,
+      2
+     ]
+    },
+    "reasoning": {
+     "medium": [
+      127.0,
+      333
+     ],
+     "high": [
+      2.0,
+      28
+     ],
+     "low": [
+      122.0,
+      199
+     ]
+    },
+    "coding": {
+     "low": [
+      75.0,
+      141
+     ],
+     "medium": [
+      33.0,
+      160
+     ],
+     "high": [
+      0.0,
+      24
+     ]
+    },
+    "tools": {
+     "low": [
+      167.0,
+      232
+     ],
+     "medium": [
+      2.0,
+      56
+     ]
+    },
+    "writing": {
+     "low": [
+      135.0,
+      185
+     ],
+     "medium": [
+      12.0,
+      48
+     ],
+     "high": [
+      4.0,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "id": "gpt-oss-120b",
+   "deployment": "gpt-oss-120b",
+   "price_in": 0.15,
+   "price_out": 0.6,
+   "supports_tools": true,
+   "verified_price": true,
+   "api": "responses",
+   "mean_out_tokens": 561.5,
+   "lat_base_ms": 1320.1,
+   "lat_per_token_ms": 3.148,
+   "cells": {
+    "extraction": {
+     "low": [
+      245.0,
+      246
+     ],
+     "medium": [
+      32.0,
+      32
+     ],
+     "high": [
+      1.0,
+      2
+     ]
+    },
+    "reasoning": {
+     "medium": [
+      333.0,
+      333
+     ],
+     "high": [
+      8.0,
+      28
+     ],
+     "low": [
+      198.0,
+      199
+     ]
+    },
+    "coding": {
+     "low": [
+      141.0,
+      141
+     ],
+     "medium": [
+      159.0,
+      160
+     ],
+     "high": [
+      22.0,
+      24
+     ]
+    },
+    "tools": {
+     "low": [
+      221.0,
+      235
+     ],
+     "medium": [
+      8.0,
+      57
+     ]
+    },
+    "writing": {
+     "low": [
+      171.0,
+      185
+     ],
+     "medium": [
+      37.0,
+      48
+     ],
+     "high": [
+      2.0,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "id": "deepseek-v4-flash",
+   "deployment": "deepseek-v4-flash",
+   "price_in": 0.48,
+   "price_out": 0.96,
+   "supports_tools": true,
+   "verified_price": false,
+   "api": "responses",
+   "mean_out_tokens": 95.9,
+   "lat_base_ms": 2240.9,
+   "lat_per_token_ms": 19.0,
+   "cells": {
+    "extraction": {
+     "low": [
+      238.0,
+      246
+     ],
+     "medium": [
+      3.0,
+      32
+     ],
+     "high": [
+      0.0,
+      2
+     ]
+    },
+    "reasoning": {
+     "medium": [
+      26.0,
+      333
+     ],
+     "high": [
+      1.0,
+      28
+     ],
+     "low": [
+      158.0,
+      199
+     ]
+    },
+    "coding": {
+     "high": [
+      0.0,
+      24
+     ],
+     "low": [
+      114.0,
+      141
+     ],
+     "medium": [
+      17.0,
+      160
+     ]
+    },
+    "tools": {
+     "low": [
+      232.0,
+      235
+     ],
+     "medium": [
+      37.0,
+      57
+     ]
+    },
+    "writing": {
+     "low": [
+      173.0,
+      185
+     ],
+     "medium": [
+      21.0,
+      48
+     ],
+     "high": [
+      3.0,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "id": "gpt-4.1",
+   "deployment": "gpt-4.1",
+   "price_in": 2.0,
+   "price_out": 8.0,
+   "supports_tools": true,
+   "verified_price": false,
+   "api": "responses",
+   "mean_out_tokens": 50.6,
+   "lat_base_ms": 1873.9,
+   "lat_per_token_ms": 19.261,
+   "cells": {
+    "extraction": {
+     "low": [
+      245.0,
+      246
+     ],
+     "medium": [
+      12.0,
+      32
+     ],
+     "high": [
+      1.0,
+      2
+     ]
+    },
+    "reasoning": {
+     "medium": [
+      41.0,
+      333
+     ],
+     "high": [
+      3.0,
+      28
+     ],
+     "low": [
+      186.0,
+      199
+     ]
+    },
+    "coding": {
+     "low": [
+      129.0,
+      141
+     ],
+     "medium": [
+      37.0,
+      160
+     ],
+     "high": [
+      0.0,
+      24
+     ]
+    },
+    "tools": {
+     "low": [
+      230.0,
+      235
+     ],
+     "medium": [
+      21.0,
+      57
+     ]
+    },
+    "writing": {
+     "low": [
+      167.0,
+      185
+     ],
+     "medium": [
+      18.0,
+      48
+     ],
+     "high": [
+      0.0,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "id": "deepseek-v4-pro",
+   "deployment": "deepseek-v4-pro",
+   "price_in": 1.925,
+   "price_out": 3.828,
+   "supports_tools": true,
+   "verified_price": false,
+   "api": "responses",
+   "mean_out_tokens": 93.6,
+   "lat_base_ms": 4734.3,
+   "lat_per_token_ms": 12.573,
+   "cells": {
+    "extraction": {
+     "low": [
+      242.0,
+      246
+     ],
+     "medium": [
+      13.0,
+      32
+     ],
+     "high": [
+      0.0,
+      2
+     ]
+    },
+    "reasoning": {
+     "medium": [
+      28.0,
+      333
+     ],
+     "high": [
+      0.0,
+      28
+     ],
+     "low": [
+      173.0,
+      199
+     ]
+    },
+    "coding": {
+     "low": [
+      113.0,
+      141
+     ],
+     "medium": [
+      16.0,
+      160
+     ],
+     "high": [
+      0.0,
+      24
+     ]
+    },
+    "tools": {
+     "low": [
+      234.0,
+      235
+     ],
+     "medium": [
+      50.0,
+      57
+     ]
+    },
+    "writing": {
+     "low": [
+      182.0,
+      185
+     ],
+     "medium": [
+      29.0,
+      48
+     ],
+     "high": [
+      3.0,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "id": "gpt-5.6-terra",
+   "deployment": "gpt-5.6-terra",
+   "price_in": 2.0,
+   "price_out": 12.0,
+   "supports_tools": true,
+   "verified_price": true,
+   "api": "responses",
+   "mean_out_tokens": 116.5,
+   "lat_base_ms": 1676.6,
+   "lat_per_token_ms": 20.29,
+   "cells": {
+    "extraction": {
+     "low": [
+      246.0,
+      246
+     ],
+     "medium": [
+      30.0,
+      32
+     ],
+     "high": [
+      1.0,
+      2
+     ]
+    },
+    "reasoning": {
+     "medium": [
+      331.0,
+      333
+     ],
+     "high": [
+      8.0,
+      28
+     ],
+     "low": [
+      199.0,
+      199
+     ]
+    },
+    "coding": {
+     "low": [
+      140.0,
+      141
+     ],
+     "medium": [
+      158.0,
+      160
+     ],
+     "high": [
+      19.0,
+      24
+     ]
+    },
+    "tools": {
+     "low": [
+      234.0,
+      235
+     ],
+     "medium": [
+      53.0,
+      57
+     ]
+    },
+    "writing": {
+     "low": [
+      181.0,
+      185
+     ],
+     "medium": [
+      38.0,
+      48
+     ],
+     "high": [
+      1.0,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "id": "gpt-5.6-sol",
+   "deployment": "gpt-5.6-sol",
+   "price_in": 4.0,
+   "price_out": 20.0,
+   "supports_tools": true,
+   "verified_price": true,
+   "api": "responses",
+   "mean_out_tokens": 116.1,
+   "lat_base_ms": 2382.9,
+   "lat_per_token_ms": 27.089,
+   "cells": {
+    "extraction": {
+     "low": [
+      246.0,
+      246
+     ],
+     "medium": [
+      32.0,
+      32
+     ],
+     "high": [
+      1.0,
+      2
+     ]
+    },
+    "reasoning": {
+     "high": [
+      10.0,
+      28
+     ],
+     "medium": [
+      332.0,
+      333
+     ],
+     "low": [
+      198.0,
+      199
+     ]
+    },
+    "coding": {
+     "low": [
+      140.0,
+      141
+     ],
+     "medium": [
+      157.0,
+      160
+     ],
+     "high": [
+      17.0,
+      24
+     ]
+    },
+    "tools": {
+     "low": [
+      235.0,
+      235
+     ],
+     "medium": [
+      57.0,
+      57
+     ]
+    },
+    "writing": {
+     "low": [
+      184.0,
+      185
+     ],
+     "medium": [
+      38.0,
+      48
+     ],
+     "high": [
+      2.0,
+      7
+     ]
+    }
+   }
+  }
+ ]
+}

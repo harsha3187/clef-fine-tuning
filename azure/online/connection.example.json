@@ -1,0 +1,10 @@
+{
+    "subscription_id":  "<your-subscription-id>",
+    "resource_group":  "<resource-group>",
+    "workspace":  "<azure-ml-workspace>",
+    "region":  "<region>",
+    "endpoint":  "<online-endpoint-name>",
+    "deployment":  "<deployment-name>",
+    "scoring_uri":  "https://<online-endpoint-name>.<region>.inference.ml.azure.com/score",
+    "auth_mode":  "aad_token"
+}

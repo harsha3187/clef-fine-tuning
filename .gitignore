@@ -1,0 +1,29 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.env
+outputs/
+data/reviewed/
+data/private/
+data/upstream/
+data/public-routing/
+data/splits/
+data/finetuning/
+# Model weights stay out of git, except the one fine-tuned Clef this repo ships (stored with Git LFS, see .gitattributes)
+models/*
+!models/README.md
+!models/clef-flash-capability-ft-v3/
+.azure/
+# Downloaded and derived datasets: several GB, regenerable with `python -m routing_data ...`, and the upstream licences are not ours to redistribute
+data/external/
+data/canonical/
+.test-work/
+*.part
+!.env.example
+# Your Azure subscription, resource group and endpoint: copy azure/online/connection.example.json and fill it in (manage.py writes it)
+azure/online/connection.json
+# Internal Word documents (the business requirements and the earlier system's guide) are not part of the code repository
+*.docx

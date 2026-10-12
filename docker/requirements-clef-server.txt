@@ -1,0 +1,12 @@
+# The packages azure/online/conda.yml installs for the deployed Clef endpoint (python 3.11). Unpinned entries resolve to the
+# newest release at build time, exactly as the Azure environment build does.
+azureml-inference-server-http==1.5.0
+pydantic==2.11.7
+torch==2.11.0
+torchvision==0.26.0
+transformers==5.10.2
+peft==0.21.1
+accelerate
+huggingface-hub
+safetensors
+pillow

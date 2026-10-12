@@ -1,0 +1,35 @@
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: flash-cap-ft
+endpoint_name: clef-routing-exp
+code_configuration:
+  code: code
+  scoring_script: score.py
+model: azureml:clef-flash-capability-ft:1
+environment: azureml:clef-routing-gpu:3
+instance_type: Standard_NC40ads_H100_v5
+instance_count: 1
+app_insights_enabled: false
+environment_variables:
+  CLEF_VARIANT: "flash"
+  CLEF_FINETUNED: "true"
+  WORKER_COUNT: "1"
+  WORKER_TIMEOUT: "1800"
+  SCORING_TIMEOUT_MS: "180000"
+  APP_INSIGHTS_LOG_RESPONSE_ENABLED: "false"
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  TOKENIZERS_PARALLELISM: "false"
+request_settings:
+  request_timeout_ms: 180000
+  max_concurrent_requests_per_instance: 1
+readiness_probe:
+  initial_delay: 120
+  period: 15
+  timeout: 10
+  success_threshold: 1
+  failure_threshold: 100
+liveness_probe:
+  initial_delay: 120
+  period: 15
+  timeout: 10
+  success_threshold: 1
+  failure_threshold: 100

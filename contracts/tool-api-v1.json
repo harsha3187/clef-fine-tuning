@@ -1,0 +1,44 @@
+{
+  "tool_lookup": {
+    "description": "Use an explicitly offered tool for a single logical read-only lookup or computation. Includes weather retrieval, status checks, searches within a provided service and mathematical calculations. The tool's documented capability must match the request. A search-like word does not imply web_research when a specific service tool suffices. Multiple requested operations needing coordination belong to tool_workflow.",
+    "tools": ["offered_read_only_tools"],
+    "can_write": false,
+    "success_criteria": "Select only supported, offered capabilities with sufficient arguments. Do not invent tools, assume credentials or execute a tool during routing. Native expected calls are not part of the input."
+  },
+  "tool_action": {
+    "description": "Own one logical operation through an explicitly offered tool that changes state, such as creating a task, moving a file, sending a message or making a booking. The requested effect, not the HTTP verb alone, determines whether it is an action. Read-only retrieval is tool_lookup; coordinated multiple operations are tool_workflow. Missing authorization does not become permission through this label.",
+    "tools": ["offered_state_changing_tools"],
+    "can_write": true,
+    "success_criteria": "Identify an offered capability matching the requested effect, while leaving authentication, confirmation and execution gates intact. Never perform a payment, booking or other external change merely to evaluate routing."
+  },
+  "tool_workflow": {
+    "description": "Coordinate multiple offered tool operations required by the first user request, whether independent and parallel or sequential with dependencies. Includes fetching information and then creating an object from the result. Do not incorporate future conversation turns. A single search-backed research task belongs to web_research when that specialist fits. A required unsupported operation makes the full request no_matching_tool rather than a fabricated workflow.",
+    "tools": ["offered_tools", "coordinate_subtasks"],
+    "can_write": true,
+    "success_criteria": "Recognize the required coordination and dependencies without predicting future user requests or executing tools. Every required capability must be available; missing required arguments belong to clarification."
+  },
+  "web_research": {
+    "description": "Answer an information-seeking request using explicitly available web-search or web-retrieval capabilities, including multi-step source discovery and synthesis. Do not choose this from words such as current or find alone: a dedicated offered service may make tool_lookup the appropriate owner. Research combined with a separate state-changing operation belongs to tool_workflow.",
+    "tools": ["offered_web_search", "offered_web_retrieval"],
+    "can_write": false,
+    "success_criteria": "Use only available search capabilities and identify the need for current or sourced information. Do not invent search access, answers or citations."
+  },
+  "memory_retrieval": {
+    "description": "Retrieve facts from an explicitly supplied persistent memory or prior-conversation environment. Includes questions about the user's previously recorded preferences or facts. Do not invent personal information or assume an absent memory store. Missing benchmark memory reconstruction is a dataset-preparation blocker, not evidence for an arbitrary routing label.",
+    "tools": ["offered_memory_lookup"],
+    "can_write": false,
+    "success_criteria": "Identify a supported memory-retrieval task using the supplied memory capability and decision-time context. Do not infer answers from future turns or label hidden environment state as available."
+  },
+  "clarification": {
+    "description": "An offered capability could satisfy the request, but a necessary argument, intended object or decision is missing or contradictory and cannot be obtained through the offered tools. Distinguish insufficient request information from an absent capability. An unavailable capability belongs to no_matching_tool; adapter omissions must be repaired or excluded before labeling.",
+    "tools": ["ask_user"],
+    "can_write": false,
+    "success_criteria": "Name the missing information that prevents a supported dispatch. Do not ask for arguments that the offered tools can already retrieve or invent values to force a tool call."
+  },
+  "no_matching_tool": {
+    "description": "No offered capability, or combination of offered capabilities, can fulfill the first user request. Includes a coding request when the roster offers unrelated business APIs and no coding agent. Do not copy the dataset's irrelevance label blindly; inspect the request and supplied tool descriptions. A supported operation with missing arguments is clarification, not tool irrelevance.",
+    "tools": [],
+    "can_write": false,
+    "success_criteria": "Identify the unsupported capability without inventing a tool or executing an unrelated one. This label is specific to the offered tool roster and is not equivalent to coding-track fallback."
+  }
+}

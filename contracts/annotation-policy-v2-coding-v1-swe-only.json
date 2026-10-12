@@ -1,0 +1,29 @@
+{
+  "version": "blind-double-annotation-v1",
+  "decision_unit": "One initial owning agent for the first user request, not a tool-call sequence or downstream solution.",
+  "track_assignment": {
+    "swe-bench": "coding-v1",
+    "bfcl": "tool-api-v1",
+    "toolbench": "tool-api-v1"
+  },
+  "label_origin": "AI-assisted blind two-pass agreement; not human-reviewed gold.",
+  "acceptance_rule": "Both passes must label the same primary route and the same acceptable-route set, with valid verbatim decision-time evidence. Disagreements and ambiguity require adjudication.",
+  "context_rule": "Missing benchmark environment reconstruction blocks annotation. A missing local SWE checkout does not block clear initial-owner intent, but no downstream solvability is claimed.",
+  "exposure_rule": "Native dev rows and query groups containing a known exposed row are development-only. Other rows are holdout candidates, not a frozen test set.",
+  "known_development_exposed_ids": [
+    "swe-bench:dev:pvlib__pvlib-python-1157",
+    "swe-bench:dev:pylint-dev__astroid-2307",
+    "swe-bench:test:django__django-15268",
+    "swe-bench:test:django__django-14890",
+    "swe-bench:dev:pvlib__pvlib-python-1213",
+    "swe-bench:dev:pyvista__pyvista-3750",
+    "swe-bench:dev:pydicom__pydicom-996",
+    "swe-bench:dev:pydicom__pydicom-1048",
+    "swe-bench:dev:pydicom__pydicom-1539",
+    "swe-bench:dev:pyvista__pyvista-4853",
+    "swe-bench:dev:sqlfluff__sqlfluff-3648",
+    "swe-bench:dev:sqlfluff__sqlfluff-2862",
+    "swe-bench:dev:pydicom__pydicom-1192",
+    "swe-bench:dev:pvlib__pvlib-python-1518"
+  ]
+}

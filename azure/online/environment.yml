@@ -1,0 +1,6 @@
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+name: clef-routing-gpu
+version: "3"
+description: Pinned Clef GPU inference environment, with peft for fine-tuned adapters
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest
+conda_file: conda.yml

@@ -1,0 +1,77 @@
+name: aie
+
+# The Adaptive Intelligence Engine.
+#
+#   docker compose up --build                       the service on http://localhost:8765
+#   docker compose exec app az login --use-device-code      once, to let it call Azure (kept in a volume)
+#   docker compose --profile local-clef up          also run Clef itself in a container (needs an NVIDIA GPU); see docs/docker.md
+#
+# Settings go in a `.env` file next to this one (see .env.example). It is not committed.
+
+services:
+  app:
+    build:
+      context: .
+      target: app
+      args:
+        WITH_AZ_CLI: "1"          # "0" for a smaller image that signs in with a service principal or managed identity
+    image: adaptive-intelligence-engine:local
+    # Published on this machine only. The service holds cloud credentials and can spend money: never publish it on 0.0.0.0
+    # without an authenticating proxy in front.
+    ports:
+      - "127.0.0.1:8765:8765"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      AIE_AZURE_AUTH: ${AIE_AZURE_AUTH:-default}     # service principal, managed identity, then the Azure CLI session
+      AIE_ALLOWED_HOSTS: ${AIE_ALLOWED_HOSTS:-}      # extra Host names for other containers that call this one
+      AIE_APPLY_SELECTOR: ${AIE_APPLY_SELECTOR:-1}   # 1: the With Clef lane runs on the endpoints Clef and the selector choose
+      AIE_ROUTE_PLANNER: ${AIE_ROUTE_PLANNER:-1}     # 1: Clef also chooses the planner model (0: the fixed planner in the policy)
+      AIE_ROUTE_JUDGE: ${AIE_ROUTE_JUDGE:-1}         # 1: Clef also chooses the model that checks the With Clef lane (0: the fixed reviewer)
+      AIE_SHADOW_LOCAL: ${AIE_SHADOW_LOCAL:-}        # 1: the shadow router is the local Clef container below
+      AIE_SHADOW_URL: ${AIE_SHADOW_URL:-}            # e.g. http://clef-server:5001/score
+      CLEF_ENDPOINT_URL: ${CLEF_ENDPOINT_URL:-}      # overrides azure/online/connection.json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reaches the host token broker (routing_lab.token_broker) on Linux too
+    volumes:
+      - aie-data:/data                 # telemetry, shadow decisions, saved preferences, model registry changes
+      - azure-login:/home/aie/.azure   # the `az login` session
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # Optional: serve the fine-tuned Clef from this repo's models/ folder instead of using the Azure endpoint.
+  clef-server:
+    profiles: ["local-clef"]
+    build:
+      context: .
+      dockerfile: docker/clef-server.Dockerfile
+      target: server
+    image: clef-server:local
+    environment:
+      CLEF_DEVICE: ${CLEF_DEVICE:-cuda}
+      HF_TOKEN: ${HF_TOKEN:-}          # only if your network needs one; the base model is public
+    volumes:
+      - ./models/clef-flash-capability-ft-v3:/models:ro
+      - hf-cache:/cache/huggingface    # the 18 GB base model is downloaded here on first start
+    expose:
+      - "5001"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  aie-data:
+  azure-login:
+  hf-cache:

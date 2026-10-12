@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "baseline_model": "gpt-5.6-sol",
+  "planner_model": "gpt-4.1",
+  "judge_model": "gpt-4.1",
+  "safe_fallback_model": "gpt-4.1",
+  "sigmoid_k": 14,
+  "complexity_max_bump": 0.18,
+  "low_confidence": {
+    "threshold": 0.55,
+    "requirement_bump": 0.08
+  },
+  "escalation": {
+    "requirement_step": 0.15,
+    "max_escalations": 2,
+    "judge_min_score": 3
+  },
+  "limits": {
+    "max_task_chars": 3000,
+    "max_steps": 5
+  },
+  "modes": {
+    "fast": {
+      "label": "Fast",
+      "lambda_cost": 0.6,
+      "mu_latency": 0.9,
+      "quality_floor": 0.6,
+      "requirement_shift": -0.08
+    },
+    "balanced": {
+      "label": "Balanced",
+      "lambda_cost": 1.0,
+      "mu_latency": 0.4,
+      "quality_floor": 0.8,
+      "requirement_shift": 0.0
+    },
+    "deep": {
+      "label": "Deep",
+      "lambda_cost": 0.15,
+      "mu_latency": 0.05,
+      "quality_floor": 0.85,
+      "requirement_shift": 0.06
+    }
+  },
+  "fallback_route": {
+    "code": "debugging",
+    "tools": "tool_workflow"
+  },
+  "profiles": {
+    "coding-v1": {
+      "debugging": {
+        "skill": "coding",
+        "base": 0.7,
+        "out_tokens": 500
+      },
+      "code_generation": {
+        "skill": "coding",
+        "base": 0.62,
+        "out_tokens": 700
+      },
+      "test_generation": {
+        "skill": "coding",
+        "base": 0.52,
+        "out_tokens": 500
+      },
+      "code_review": {
+        "skill": "reasoning",
+        "base": 0.66,
+        "out_tokens": 500
+      },
+      "repository_qa": {
+        "skill": "general",
+        "base": 0.45,
+        "out_tokens": 300
+      },
+      "fallback": {
+        "skill": "general",
+        "base": 0.35,
+        "out_tokens": 250
+      }
+    },
+    "tool-api-v1": {
+      "tool_lookup": {
+        "skill": "tools",
+        "base": 0.4,
+        "out_tokens": 150,
+        "needs_tools": true
+      },
+      "tool_action": {
+        "skill": "tools",
+        "base": 0.58,
+        "out_tokens": 200,
+        "needs_tools": true
+      },
+      "tool_workflow": {
+        "skill": "tools",
+        "base": 0.72,
+        "out_tokens": 350,
+        "needs_tools": true
+      },
+      "web_research": {
+        "skill": "reasoning",
+        "base": 0.68,
+        "out_tokens": 400
+      },
+      "memory_retrieval": {
+        "skill": "general",
+        "base": 0.38,
+        "out_tokens": 200
+      },
+      "clarification": {
+        "skill": "general",
+        "base": 0.3,
+        "out_tokens": 80,
+        "executes": false
+      },
+      "no_matching_tool": {
+        "skill": "general",
+        "base": 0.35,
+        "out_tokens": 200
+      }
+    }
+  },
+  "customer_facing_bump": 0.18,
+  "router_cost_per_decision_usd": 0.0004,
+  "router_cost_note": "Estimate: one H100 at $6.98/h divided by about 185 ms of server time per decision, assuming the GPU stays busy. Idle time is not counted.",
+  "preferences": {
+    "quality": {
+      "average": {
+        "label": "Average",
+        "floor": 0.55,
+        "shift": -0.04,
+        "gate_min_score": 3,
+        "hint": "Fine for routine replies. Cheapest and fastest.",
+        "gate_tiers": [
+          "small"
+        ]
+      },
+      "good": {
+        "label": "Good enough",
+        "floor": 0.7,
+        "shift": 0.0,
+        "gate_min_score": 4,
+        "hint": "Correct and polite. Most teams start here.",
+        "gate_tiers": [
+          "small"
+        ]
+      },
+      "very_good": {
+        "label": "Very good",
+        "floor": 0.85,
+        "shift": 0.06,
+        "gate_min_score": 4,
+        "hint": "Safest for sensitive or high-value cases.",
+        "gate_tiers": [
+          "small",
+          "mid"
+        ]
+      }
+    },
+    "latency": {
+      "low": {
+        "label": "Low",
+        "weight": 1.0,
+        "note": "Replies are needed quickly, so slower models are penalized heavily."
+      },
+      "medium": {
+        "label": "Medium",
+        "weight": 0.4,
+        "note": "A few extra seconds are fine when they buy quality."
+      },
+      "high": {
+        "label": "High",
+        "weight": 0.05,
+        "note": "Speed barely matters, so the best-fitting model is used even if it is slow."
+      }
+    },
+    "cost": {
+      "low": {
+        "label": "Low",
+        "weight": 1.2,
+        "note": "Token spend is kept as low as the quality setting allows."
+      },
+      "medium": {
+        "label": "Medium",
+        "weight": 0.6,
+        "note": "Cost and quality are weighed evenly."
+      },
+      "high": {
+        "label": "High",
+        "weight": 0.1,
+        "note": "Cost is a minor factor; capability comes first."
+      }
+    }
+  },
+  "stakes_bump": 0.14,
+  "stakes_pattern": "\\b(issu\\w*|process\\w*|appl\\w*|grant\\w*|initiat\\w*|approv\\w*|send\\w*|post\\w*|mak\\w*|giv\\w*|add(s|ed|ing)?|cancel\\w*|updat\\w*|chang\\w*|escalat\\w*)\\b[^.\\n]{0,70}\\b(refund\\w*|store credit|credit\\w*|compensation|reimburse\\w*|order|address|claim|case)\\b|\\brefund(ing)?\\s+(the|a|an|\\\\\\$|full|shipping)\\b"
+}

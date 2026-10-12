@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "models": [
+    {
+      "id": "gpt-5.6-luna",
+      "display": "GPT-5.6 Luna",
+      "provider": "azure-openai",
+      "deployment": "gpt-5.6-luna",
+      "tier": "small",
+      "live": true,
+      "healthy": true,
+      "allowed": true,
+      "supports_tools": true,
+      "regions": [
+        "eastus2"
+      ],
+      "context_window": 128000,
+      "price_in": 0.2,
+      "price_out": 1.2,
+      "price_source": "Azure retail price API, 2026-10-08",
+      "lat_base_ms": 3000,
+      "lat_per_token_ms": 15,
+      "skills": {
+        "coding": 0.5,
+        "reasoning": 0.48,
+        "tools": 0.68,
+        "general": 0.66
+      },
+      "notes": "Smallest GPT-5.6 tier. Skill scores are assumed priors, not benchmark results."
+    },
+    {
+      "id": "gpt-4.1",
+      "display": "GPT-4.1",
+      "provider": "azure-openai",
+      "deployment": "gpt-4.1",
+      "tier": "mid",
+      "live": true,
+      "healthy": true,
+      "allowed": true,
+      "supports_tools": true,
+      "regions": [
+        "eastus2"
+      ],
+      "context_window": 128000,
+      "price_in": 2.0,
+      "price_out": 8.0,
+      "price_source": "Published list price, not re-verified",
+      "lat_base_ms": 2200,
+      "lat_per_token_ms": 15,
+      "skills": {
+        "coding": 0.76,
+        "reasoning": 0.62,
+        "tools": 0.84,
+        "general": 0.82
+      },
+      "notes": "Non-reasoning model with strong tool use. Skill scores are assumed priors."
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "display": "GPT-5.6 Terra",
+      "provider": "azure-openai",
+      "deployment": "gpt-5.6-terra",
+      "tier": "mid",
+      "live": true,
+      "healthy": true,
+      "allowed": true,
+      "supports_tools": true,
+      "regions": [
+        "eastus2"
+      ],
+      "context_window": 128000,
+      "price_in": 2.0,
+      "price_out": 12.0,
+      "price_source": "Azure retail price API, 2026-10-08",
+      "lat_base_ms": 3500,
+      "lat_per_token_ms": 20,
+      "skills": {
+        "coding": 0.74,
+        "reasoning": 0.76,
+        "tools": 0.82,
+        "general": 0.8
+      },
+      "notes": "Mid GPT-5.6 tier. Skill scores are assumed priors, not benchmark results."
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "display": "GPT-5.6 Sol",
+      "provider": "azure-openai",
+      "deployment": "gpt-5.6-sol",
+      "tier": "frontier",
+      "live": true,
+      "healthy": true,
+      "allowed": true,
+      "supports_tools": true,
+      "regions": [
+        "eastus2"
+      ],
+      "context_window": 128000,
+      "price_in": 4.0,
+      "price_out": 20.0,
+      "price_source": "Azure retail price API, 2026-10-08",
+      "lat_base_ms": 4000,
+      "lat_per_token_ms": 12,
+      "skills": {
+        "coding": 0.95,
+        "reasoning": 0.96,
+        "tools": 0.94,
+        "general": 0.94
+      },
+      "notes": "Frontier tier and the always-frontier baseline. Skill scores are assumed priors."
+    },
+    {
+      "id": "gpt-4o",
+      "display": "GPT-4o (catalog only)",
+      "provider": "azure-openai",
+      "deployment": "gpt-4",
+      "tier": "mid",
+      "live": false,
+      "healthy": true,
+      "allowed": true,
+      "supports_tools": true,
+      "regions": [
+        "eastus2"
+      ],
+      "context_window": 128000,
+      "price_in": 2.5,
+      "price_out": 10.0,
+      "price_source": "Published list price, not re-verified",
+      "lat_base_ms": 1500,
+      "lat_per_token_ms": 24,
+      "skills": {
+        "coding": 0.68,
+        "reasoning": 0.58,
+        "tools": 0.78,
+        "general": 0.78
+      },
+      "notes": "Deployed with only 1K tokens/min of quota, so it is kept in the catalog but not routable."
+    }
+  ]
+}

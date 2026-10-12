@@ -1,0 +1,5 @@
+# Runtime dependencies of the Adaptive Intelligence Engine service (agent_demo + routing_lab + capability_lab).
+# Nothing here loads a model: Clef runs on the Azure endpoint (or the optional local Clef container).
+pydantic==2.13.5
+requests==2.34.2
+azure-identity==1.25.3

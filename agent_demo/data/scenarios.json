@@ -1,0 +1,122 @@
+[
+  {
+    "id": "where-is-my-order",
+    "title": "Where is my order?",
+    "tag": "Simple",
+    "summary": "A shipping status question. A small model should be enough.",
+    "message": "Hi, this is Priya Nair (priya.nair@example.com). Could you tell me where my kettle is? It is order A-1057, and I am hoping it arrives before the weekend.",
+    "expect": [
+      {
+        "label": "Shipment tracked for A-1057",
+        "tool": "track_shipment",
+        "args": {
+          "order_id": "A-1057"
+        }
+      },
+      {
+        "label": "No refund issued",
+        "tool": "issue_refund",
+        "absent": true
+      }
+    ]
+  },
+  {
+    "id": "damaged-jacket",
+    "title": "Damaged jacket refund",
+    "tag": "Standard",
+    "summary": "Policy lookup, then a refund of the item and shipping.",
+    "message": "Hello, I am Priya Nair (priya.nair@example.com). The zip on the Trail Runner jacket that arrived last week (order A-1042) is broken. I would like my money back please.",
+    "expect": [
+      {
+        "label": "Full refund of $138.99 issued on A-1042 (item and shipping)",
+        "tool": "issue_refund",
+        "args": {
+          "order_id": "A-1042",
+          "amount": 138.99
+        }
+      }
+    ]
+  },
+  {
+    "id": "late-vip-order",
+    "title": "Late order, angry VIP",
+    "tag": "Sensitive",
+    "summary": "A platinum customer, a late delivery and a chargeback threat. Policy maths and tone both matter.",
+    "message": "This is completely unacceptable. I am Elena Petrova (elena.petrova@example.com) and my espresso machine, order A-1075, was promised for 28 September and it still has not arrived. I have been a loyal customer for years. I want the shipping refunded and I expect proper compensation, otherwise I am filing a chargeback.",
+    "expect": [
+      {
+        "label": "Shipping fee of $24.99 refunded on A-1075",
+        "tool": "issue_refund",
+        "args": {
+          "order_id": "A-1075",
+          "amount": 24.99
+        }
+      },
+      {
+        "label": "Store credit of $109.80 added (20% platinum)",
+        "tool": "add_store_credit",
+        "args": {
+          "customer_id": "C-203",
+          "amount": 109.8
+        }
+      }
+    ]
+  },
+  {
+    "id": "warranty-claim",
+    "title": "Refund outside the return window",
+    "tag": "Sensitive",
+    "summary": "The customer asks for something policy does not allow. The right move is a warranty claim.",
+    "message": "I am Marcus Webb (marcus.webb@example.com). The motor on my oak standing desk, order A-1061, stopped working after about six weeks. I want a full refund.",
+    "expect": [
+      {
+        "label": "No refund issued outside the 30-day window",
+        "tool": "issue_refund",
+        "absent": true
+      },
+      {
+        "label": "Warranty claim escalated to a human",
+        "tool": "escalate_to_human",
+        "args": {
+          "order_id": "A-1061"
+        }
+      }
+    ]
+  },
+  {
+    "id": "address-change",
+    "title": "Address change plus an unrelated question",
+    "tag": "Standard",
+    "summary": "One action the store can do and one request it cannot.",
+    "message": "Hi, Marcus Webb here (marcus.webb@example.com). Please change the delivery address on order A-1088 to 14 Harbour Lane, Leeds LS1 4AB. Also, can you recommend a good tent for winter camping?",
+    "expect": [
+      {
+        "label": "Address on A-1088 changed",
+        "tool": "update_shipping_address",
+        "args": {
+          "order_id": "A-1088",
+          "new_address": "14 Harbour Lane"
+        }
+      }
+    ]
+  },
+  {
+    "id": "missing-details",
+    "title": "Missing details",
+    "tag": "Simple",
+    "summary": "No order number. The agent should ask rather than guess.",
+    "message": "I want to return my order.",
+    "expect": [
+      {
+        "label": "No refund issued without an order",
+        "tool": "issue_refund",
+        "absent": true
+      },
+      {
+        "label": "No order cancelled",
+        "tool": "cancel_order",
+        "absent": true
+      }
+    ]
+  }
+]

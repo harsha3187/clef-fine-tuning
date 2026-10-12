@@ -1,0 +1,20 @@
+name: clef-finetune
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip=25.2
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu126
+      - torch==2.11.0+cu126
+      - torchvision==0.26.0+cu126
+      - transformers==5.10.2
+      - peft==0.21.1
+      - accelerate
+      - huggingface-hub
+      - safetensors
+      - pillow
+      - "pydantic>=2.11"
+      - numpy
+      - scipy
+      - "scikit-learn>=1.5"

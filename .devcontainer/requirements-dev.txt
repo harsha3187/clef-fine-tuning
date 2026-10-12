@@ -1,0 +1,11 @@
+# Tools for working on the repository, on top of the service and test requirements. Versions follow uv.lock.
+ruff==0.16.8
+# What the rest of the repository's tests import (notebooks, datasets, judges).
+nbformat==5.11.1
+nbclient==0.11.0
+pyarrow==25.0.1
+openai>=3.19.0
+tqdm==4.70.1
+matplotlib==3.11.2
+ipykernel==7.3.0
+ipywidgets==8.1.9

@@ -1,0 +1,86 @@
+{
+  "debugging": {
+    "description": "Diagnose or repair existing behavior that violates an intended functional contract. Includes exceptions, wrong values or types, silently ignored operations, regressions, and explaining a specific observed failure without edits. Own related regression tests too. A failing behavior need not contain the word bug. Performance-only problems belong to performance_optimization; CI, packaging or environment failures belong to build_release when that configuration is the actual task.",
+    "tools": ["read_file", "search_code", "run_tests", "edit_file"],
+    "can_write": true,
+    "success_criteria": "Identify the supported cause and complete the requested diagnosis or authorized repair, including focused verification. Distinguish restoring intended behavior from adding a new capability. Repository checkout is a downstream prerequisite, not by itself a reason to refuse a clear issue-routing decision. Honor read-only requests and do not infer execution permission from task text."
+  },
+  "code_generation": {
+    "description": "Implement a new capability or an intentional change to observable behavior. Includes frontend interfaces, endpoints, integrations, commands, features and support for new formats. Own supporting tests and incidental restructuring. Do not choose this just because the solution needs code: functional repairs are debugging, behavior-preserving restructuring is refactoring, and tests-only work is test_generation.",
+    "tools": ["read_file", "search_code", "edit_file", "run_tests"],
+    "can_write": true,
+    "success_criteria": "Deliver the requested functionality within the existing interfaces and constraints, with verification. Use the requested outcome, not words such as code or function, to identify implementation intent. A sufficiently described feature can be routed before its repository is checked out. Tool and filesystem access still require independent authorization."
+  },
+  "refactoring": {
+    "description": "Restructure working code while preserving its intended externally observable behavior. Includes extracting modules, renaming APIs with compatible callers, eliminating duplication, reorganizing architecture and maintainability-focused migrations. If a concrete functional failure motivates the changes, choose debugging. If new behavior is the deliverable, choose code_generation. Design discussion without implementation belongs to planning.",
+    "tools": ["read_file", "search_code", "find_references", "edit_file", "run_tests"],
+    "can_write": true,
+    "success_criteria": "Preserve behavior and compatibility while completing the requested structural change. Trace callers and verify affected behavior. Do not perform unrelated cleanup or treat a broad refactor as permission to alter requirements."
+  },
+  "test_generation": {
+    "description": "Create, extend or reorganize automated tests when tests are the requested deliverable and no production failure needs diagnosis or repair. Includes fixtures, mocks, parameterization, property-based cases and missing coverage. Regression tests accompanying a repair stay with debugging; tests accompanying a feature stay with code_generation. A failing test alone is not a tests-only request.",
+    "tools": ["read_file", "search_code", "edit_tests", "run_tests"],
+    "can_write": true,
+    "success_criteria": "Produce focused tests for the stated behavior and verify their execution. Do not change production behavior merely to satisfy a test or invent requirements absent from the request."
+  },
+  "code_review": {
+    "description": "Read supplied code or changes and report actionable defects or risks without implementing repairs. Includes pull-request review, correctness evaluation and maintainability assessment. Neutral explanation is repository_qa. A specifically security-focused audit is security_review. Diagnosing an already observed functional failure is debugging, even when the user also asks to inspect the code.",
+    "tools": ["read_file", "search_code", "find_references"],
+    "can_write": false,
+    "success_criteria": "Report evidence-backed findings with locations and consequences, or state that no actionable findings were found. Do not manufacture issues, modify code, or run unapproved commands."
+  },
+  "security_review": {
+    "description": "Perform a read-only, explicitly security-focused assessment of code, changes, dependencies or configuration. Includes authorization, injection, secret handling and trust-boundary risks when the requested deliverable is findings. Implementing a known vulnerability fix belongs to debugging; adding a new security feature belongs to code_generation. General code review that happens to include security remains code_review unless security is the primary objective.",
+    "tools": ["read_file", "search_code", "find_references"],
+    "can_write": false,
+    "success_criteria": "Identify supported security findings and explain impact and evidence without exploit execution, destructive testing or code changes. Do not infer broad security-testing permission from an audit request."
+  },
+  "performance_optimization": {
+    "description": "Investigate or improve execution time, latency, throughput, memory use, query efficiency or algorithmic cost when performance is the primary requested outcome. Includes profiling and performance regressions even without the word optimize. Functional wrong-result failures remain debugging. Behavior-preserving cleanup without a measured performance goal is refactoring. A general review is not automatically a performance task.",
+    "tools": ["read_file", "search_code", "profile", "benchmark", "edit_file", "run_tests"],
+    "can_write": true,
+    "success_criteria": "Establish an appropriate baseline, explain the bottleneck and verify the requested improvement without changing intended functional results. Do not claim speedups from intuition alone or run expensive benchmarks without authorization."
+  },
+  "repository_qa": {
+    "description": "Explain or locate existing repository code, control flow, dependencies, symbols or ownership without changing it or evaluating it for defects. Includes finding callers and explaining how a component works. Explaining a concrete observed failure is debugging. Comparing external technologies is research. Creating a persistent documentation deliverable is documentation.",
+    "tools": ["read_file", "search_code", "find_references"],
+    "can_write": false,
+    "success_criteria": "Answer using repository evidence and identify any material gaps. Missing checkout is a retrieval prerequisite when repository identity and the question are clear, not an automatic clarification label. Do not invent code facts."
+  },
+  "research": {
+    "description": "Investigate external technical documentation, library behavior, API capabilities, standards or technology trade-offs to answer a coding-related question. The requested deliverable is evidence or recommendations rather than implementation. Internal repository navigation is repository_qa. An implementation-ready design or work breakdown is planning. Unrelated travel, financial transactions and general API operations are outside this coding track.",
+    "tools": ["read_documentation", "web_search", "read_file"],
+    "can_write": false,
+    "success_criteria": "Provide sourced technical findings with relevant versions and limitations. Distinguish documented facts from hypotheses and do not silently turn research into code changes."
+  },
+  "planning": {
+    "description": "Produce a technical design, architecture proposal, migration strategy, implementation plan or work breakdown when the user explicitly wants planning before execution. Do not select planning merely because an implementation or bug fix is complex. A clear repair retains debugging ownership and a clear feature retains code_generation ownership unless a plan is the requested deliverable.",
+    "tools": ["read_file", "search_code", "read_documentation"],
+    "can_write": false,
+    "success_criteria": "Define scope, alternatives, dependencies, verification and unresolved decisions without implementing the plan or presenting assumptions as approved requirements."
+  },
+  "documentation": {
+    "description": "Create or update a persistent technical documentation artifact such as a README, API reference, migration guide, technical example or docstring. Distinguish editing documentation from answering a repository question in chat. Documentation supporting a primary feature or repair stays with that implementation owner unless documentation itself is the task.",
+    "tools": ["read_file", "search_code", "edit_documentation"],
+    "can_write": true,
+    "success_criteria": "Make the requested documentation accurate and consistent with the actual interfaces and supported behavior. Do not modify production code or invent unverified examples."
+  },
+  "build_release": {
+    "description": "Own build tooling, packaging, dependency environments, CI/CD workflows, release automation and deployment or infrastructure configuration. Includes failures whose subject is that machinery. A functional bug in application code remains debugging even when discovered by CI. Implementing an application feature remains code_generation. A generic request to run a provided business API is not a deployment task.",
+    "tools": ["read_file", "search_code", "edit_configuration", "run_build", "run_tests"],
+    "can_write": true,
+    "success_criteria": "Complete and validate the requested build, environment or release change while preserving existing environments and supported configurations. Installation, deployment, publishing and resource changes require their own authorization; routing grants none."
+  },
+  "clarification": {
+    "description": "A coding-related request lacks enough decision-time information to determine its initial owner or requested outcome. Includes unresolved references such as do that with no prior referent, mutually incompatible instructions, or missing intent that changes the agent choice. Do not choose this solely because code has not been checked out or implementation details still need investigation. A clear issue or feature can already have an owner.",
+    "tools": ["ask_user"],
+    "can_write": false,
+    "success_criteria": "Identify the specific missing intent or contradiction needed for a routing decision. Do not guess a substantive route, fabricate context or confuse downstream prerequisites with routing ambiguity."
+  },
+  "fallback": {
+    "description": "The request is outside the supported coding and software-engineering roles, or requires capabilities not represented by this coding roster. Examples include booking travel, sending payments and operating unrelated business APIs. Do not use fallback merely because a valid coding request lacks a keyword. In-scope routing ambiguity belongs to clarification. Tool/API operations are evaluated separately under a different roster.",
+    "tools": [],
+    "can_write": false,
+    "success_criteria": "Explain the unsupported scope or capability without executing unrelated actions. Do not map benchmark categories, source names or model identity directly to this label."
+  }
+}

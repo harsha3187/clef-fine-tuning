@@ -1,0 +1,37 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: clef-flash-finetuned-test10
+experiment_name: clef-shared-routing
+code: .
+compute: azureml:clef-gpu-train
+identity:
+  type: managed
+environment:
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest
+  conda_file: conda.yml
+environment_variables:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  TOKENIZERS_PARALLELISM: "false"
+inputs:
+  model:
+    type: uri_folder
+    path: azureml://datastores/workspaceblobstore/paths/azureml/REPLACED_AT_SUBMISSION/results/
+    mode: download
+limits:
+  timeout: 10800
+outputs:
+  results:
+    type: uri_folder
+    mode: upload
+command: |
+  set -e
+  for track in coding-v1 tool-api-v1; do
+    for mode in calibrated uncalibrated; do
+      flag=""
+      if [ "$mode" = "calibrated" ]; then flag="--calibrated"; fi
+      python -m routing_lab.cli run --backend clef --probe --allow-model-download --device cuda \
+        --snapshot "${{inputs.model}}/run/export" $flag --taxonomy $track \
+        --data data/$track-test10.jsonl --contracts data/$track.contracts.json \
+        --output "${{outputs.results}}/$track-$mode"
+    done
+  done

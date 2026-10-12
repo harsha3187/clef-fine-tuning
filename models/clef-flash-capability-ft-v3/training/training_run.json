@@ -1,0 +1,240 @@
+{
+  "status": "complete",
+  "kind": "capability-v1",
+  "smoke": false,
+  "selected_full_model": true,
+  "config": {
+    "variant": "flash",
+    "model_revision": "17f0b0ad64efb65d273590632833508766b2aae6",
+    "epochs": 3,
+    "micro_batch_size": 8,
+    "gradient_accumulation_steps": 2,
+    "lora_rank": 32,
+    "lora_alpha": 64,
+    "lora_dropout": 0.05,
+    "lora_learning_rate": 0.0001,
+    "head_learning_rate": 5e-05,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.05,
+    "max_grad_norm": 1.0,
+    "label_smoothing": 0.05,
+    "brier_weight": 1.0,
+    "skill_loss_weight": 0.5,
+    "max_length": 2048,
+    "eval_max_length": 4096,
+    "log_every_steps": 5,
+    "seed": 42,
+    "smoke": false,
+    "max_train_steps": null,
+    "validation_limit_per_track": null,
+    "calibration_limit_per_track": null
+  },
+  "release": {
+    "checkpoint": "Cloudflare/clef-flash",
+    "revision": "17f0b0ad64efb65d273590632833508766b2aae6",
+    "variant": "flash"
+  },
+  "bundle_sha256": "ecb6aaeda93dec2a7fb1976d104696572524b2b25991e6b9be0bf806162c9e2c",
+  "packages": {
+    "torch": "2.11.0+cu126",
+    "transformers": "5.10.2",
+    "peft": "0.21.1",
+    "accelerate": "1.15.0",
+    "safetensors": "0.8.0",
+    "huggingface-hub": "1.33.0",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "pydantic": "2.13.5"
+  },
+  "partition_counts": {
+    "train": 5444,
+    "validation": 787,
+    "calibration": 770
+  },
+  "training_steps": 1023,
+  "epochs": [
+    {
+      "epoch": 1,
+      "mean_training_loss": 1.4542572729923158,
+      "optimizer_steps": 341,
+      "epoch_completed": true,
+      "seconds": 3058.3383931979997,
+      "validation": {
+        "route": {
+          "rows": 787,
+          "accuracy": 0.6010165184243964,
+          "macro_f1": 0.5968479274353428,
+          "majority_accuracy": 0.4167725540025413,
+          "brier": 0.48888547099621327,
+          "ece_10_bins": 0.03839431420010143
+        },
+        "skill": {
+          "rows": 0,
+          "accuracy": null,
+          "macro_f1": null,
+          "majority_accuracy": null,
+          "brier": null,
+          "ece_10_bins": null
+        }
+      },
+      "route_macro_f1": 0.5968479274353428
+    },
+    {
+      "epoch": 2,
+      "mean_training_loss": 0.9415515743174161,
+      "optimizer_steps": 341,
+      "epoch_completed": true,
+      "seconds": 3044.194135275,
+      "validation": {
+        "route": {
+          "rows": 787,
+          "accuracy": 0.6200762388818297,
+          "macro_f1": 0.6172234839757305,
+          "majority_accuracy": 0.4167725540025413,
+          "brier": 0.4942364640970639,
+          "ece_10_bins": 0.11498215767400327
+        },
+        "skill": {
+          "rows": 0,
+          "accuracy": null,
+          "macro_f1": null,
+          "majority_accuracy": null,
+          "brier": null,
+          "ece_10_bins": null
+        }
+      },
+      "route_macro_f1": 0.6172234839757305
+    },
+    {
+      "epoch": 3,
+      "mean_training_loss": 0.45668430691939993,
+      "optimizer_steps": 341,
+      "epoch_completed": true,
+      "seconds": 3047.8118793599997,
+      "validation": {
+        "route": {
+          "rows": 787,
+          "accuracy": 0.636594663278272,
+          "macro_f1": 0.6287687763709711,
+          "majority_accuracy": 0.4167725540025413,
+          "brier": 0.5571878796912098,
+          "ece_10_bins": 0.18388597149763894
+        },
+        "skill": {
+          "rows": 0,
+          "accuracy": null,
+          "macro_f1": null,
+          "majority_accuracy": null,
+          "brier": null,
+          "ece_10_bins": null
+        }
+      },
+      "route_macro_f1": 0.6287687763709711
+    }
+  ],
+  "label_source": {
+    "kind": "external public routing datasets",
+    "sources": [
+      "llmrouterbench",
+      "xroutebench",
+      "scope60k",
+      "r2bench"
+    ],
+    "rules": {
+      "pass_at": 0.7,
+      "relative_pass": 0.8,
+      "low_share": 0.5,
+      "other_share": 0.5,
+      "min_models": 6,
+      "min_per_group": 2,
+      "r2_budget": 2000
+    },
+    "prompt_version": "p2",
+    "per_dataset_cap": 150,
+    "max_state_chars": 3000,
+    "skill_labels": "none (skill loss is skipped for these rows)",
+    "cleaning": {
+      "drop_subjective": true,
+      "partial_credit_share": 0.4,
+      "unmeasurable_threshold": 0.25,
+      "drop_all_fail_in_hard_pools": true
+    },
+    "dropped_by_cleaning": {
+      "llmrouterbench: subjective dataset": 3428,
+      "llmrouterbench: every model scored 0 in a pool where the best models barely score": 1003,
+      "xroutebench: every model scored 0 in a pool where the best models barely score": 388,
+      "r2bench: judge gave partial credit (open-ended)": 7659
+    },
+    "duplicates_dropped": 262,
+    "same_text_after_truncation_dropped": 2,
+    "licenses": {
+      "llmrouterbench": "not stated on the dataset page; prompts come from public benchmarks",
+      "xroutebench": "not stated on the dataset card; prompts come from public benchmarks",
+      "scope60k": "apache-2.0",
+      "r2bench": "mit (rights to upstream prompts stay with their providers)"
+    },
+    "note": "Rights to the original prompts remain with the upstream benchmark providers; use for research only."
+  },
+  "frozen_test_used": false,
+  "started_utc": "2026-10-09T11:13:02.192915+00:00",
+  "gpu": {
+    "name": "NVIDIA H100 NVL",
+    "total_memory_bytes": 99949805568
+  },
+  "load_seconds": 120.66855111500013,
+  "trainable_parameters": 201978884,
+  "total_parameters": 9611792628,
+  "train_tokens_per_epoch": 6426778,
+  "train_longest_sequence_tokens": 2048,
+  "steps_per_epoch": 341,
+  "planned_steps": 1023,
+  "warmup_steps": 52,
+  "gradient_flow_verified": {
+    "lora": true,
+    "head": true
+  },
+  "best_epoch": 3,
+  "calibration": {
+    "temperature": 1.9436062027063157,
+    "status": "fitted",
+    "rows": 770,
+    "nll_before": 0.9785829446080234,
+    "nll_after": 0.8417804095828886,
+    "fit_data": "calibration partition, route head only; the same temperature is applied to the skill head"
+  },
+  "validation_calibrated": {
+    "route": {
+      "rows": 787,
+      "accuracy": 0.636594663278272,
+      "macro_f1": 0.6287687763709711,
+      "majority_accuracy": 0.4167725540025413,
+      "brier": 0.4981638035347259,
+      "ece_10_bins": 0.05300967049468079
+    },
+    "skill": {
+      "rows": 0,
+      "accuracy": null,
+      "macro_f1": null,
+      "majority_accuracy": null,
+      "brier": null,
+      "ece_10_bins": null
+    }
+  },
+  "round_trip": {
+    "examples": 24,
+    "choice_agreement": 0.9583333333333334,
+    "max_abs_probability_difference": 0.024300000000000044
+  },
+  "selection": "route-head validation macro F1; first epoch wins ties",
+  "stop_reason": "epochs",
+  "pipeline_wall_seconds": 9621.913278798,
+  "peak_cuda_allocated_bytes": 41048519168,
+  "artifacts": {
+    "calibration_logits.json": "1ad1208fc370062fadae3ac5e8de839cd1df0ac2f9a5c35630222c56bcce56d9",
+    "export/clef_finetune.json": "cabc2451c7de2074dbce55873be7701772026eb09d9e70bed9c89ed87ba090a1",
+    "export/joint_head.safetensors": "bec5425fd8cc4e1f0d086c12d7d62faade826b94eb89d00edb3693faf1665721",
+    "export/adapter/adapter_config.json": "ba73a52a9f0eb68db181bc72d14f7a5a8dc78a232b51bad3aaa706aa78fcb7f0",
+    "export/adapter/README.md": "32513f936657afa0669ca4a6bcf59407f8684611b105ada0ca8d05cae77e874c",
+    "export/adapter/adapter_model.safetensors": "3651988bb592eda963ccf96afe38ec89068840c26464094b1f5f09e481ab6beb"
+  }
+}

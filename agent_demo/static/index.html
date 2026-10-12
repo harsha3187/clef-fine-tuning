@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptive Intelligence Engine</title>
+<script nonce="{{nonce}}">
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+    const theme =
+      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div>
+      <div class="brand-name">Adaptive Intelligence Engine</div>
+      <div class="brand-sub">Routing proof of concept</div>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button type="button" data-view="desk" data-agent="support" class="tab">Support desk</button>
+    <button type="button" data-view="desk" data-agent="travel" class="tab">Travel planner</button>
+    <button type="button" data-view="prefs" class="tab">Preferences</button>
+    <button type="button" data-view="models" class="tab">Models</button>
+    <button type="button" data-view="insights" class="tab">Insights</button>
+    <button type="button" data-view="about" class="tab">How it works</button>
+  </nav>
+  <div class="status" id="status" role="status"></div>
+</header>
+
+<main id="main" tabindex="-1">
+  <section id="view-desk" class="view" aria-labelledby="desk-title" hidden>
+    <div class="page-head">
+      <div>
+        <h1 id="desk-title">Support desk</h1>
+        <p class="lede" id="desk-lede"></p>
+      </div>
+      <button type="button" class="prefs-summary" id="prefs-summary" aria-label="Change routing preferences"></button>
+    </div>
+    <div class="desk">
+      <aside class="composer" aria-label="Customer message">
+        <h2 id="composer-title">Customer message</h2>
+        <div class="field">
+          <label id="cases-label">Start from an example</label>
+          <div id="cases" class="cases" role="radiogroup" aria-labelledby="cases-label"></div>
+        </div>
+        <div id="composer-support">
+          <div class="field">
+            <label for="message">Message</label>
+            <textarea id="message" rows="8" maxlength="3000" placeholder="Paste or write what the customer sent…"></textarea>
+            <div class="field-foot"><span id="message-count" class="hint"></span><span id="message-error" class="field-error" role="alert"></span></div>
+          </div>
+        </div>
+        <div id="composer-travel" hidden></div>
+        <div id="expect" class="expect" hidden></div>
+        <button type="button" id="run" class="btn primary block">Run both ways</button>
+        <p class="hint">Runs call your Azure OpenAI deployments: a few cents for support, roughly $0.4 to $1 for a trip (web search included). Nothing outside this app changes.</p>
+      </aside>
+      <div id="results" class="results" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section id="view-prefs" class="view" aria-labelledby="prefs-title" hidden>
+    <div class="page-head">
+      <div>
+        <h1 id="prefs-title">Routing preferences</h1>
+        <p class="lede">Tell the router what matters. It turns these three choices into the rules that pick a model for every step.</p>
+      </div>
+    </div>
+    <div class="prefs">
+      <form id="prefs-form" class="prefs-form" novalidate></form>
+      <div id="prefs-preview" class="prefs-preview" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section id="view-models" class="view" aria-labelledby="models-title" hidden>
+    <div class="page-head">
+      <div>
+        <h1 id="models-title">Models</h1>
+        <p class="lede">The registry is checked before anything is ranked. Mark a model unhealthy to simulate an outage, or take it off the allowlist to enforce policy. Every change creates a new registry version.</p>
+      </div>
+      <span class="chip" id="registry-version"></span>
+    </div>
+    <div class="table-wrap"><div id="models-table"></div></div>
+    <details class="disclosure">
+      <summary>Onboard a new model</summary>
+      <p class="hint">A profile is all that is needed; no application code changes. Skill scores are your estimate from 0 to 1 until benchmark results replace them.</p>
+      <form id="add-model" class="grid-form"></form>
+    </details>
+  </section>
+
+  <section id="view-insights" class="view" aria-labelledby="insights-title" hidden>
+    <div class="page-head">
+      <div>
+        <h1 id="insights-title">Insights</h1>
+        <p class="lede">Measured across every run on this machine. Each run executes both lanes, so these are real totals, not estimates.</p>
+      </div>
+      <button type="button" id="refresh-insights" class="btn">Refresh</button>
+    </div>
+    <div id="insights"></div>
+  </section>
+
+  <section id="view-about" class="view" aria-labelledby="about-title" hidden>
+    <div id="about"></div>
+  </section>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

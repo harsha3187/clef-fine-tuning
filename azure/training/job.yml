@@ -1,0 +1,28 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: clef-flash-router-finetune
+experiment_name: clef-shared-routing
+code: .
+compute: azureml:clef-gpu-train
+identity:
+  type: managed
+environment:
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest
+  conda_file: conda.yml
+environment_variables:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  TOKENIZERS_PARALLELISM: "false"
+  PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+limits:
+  timeout: 21600
+outputs:
+  results:
+    type: uri_folder
+    mode: upload
+command: >-
+  python -m routing_lab.finetune
+  --bundle bundle
+  --config config.json
+  --output ${{outputs.results}}/run
+  --allow-training
+  --allow-model-download

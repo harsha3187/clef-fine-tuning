@@ -1,0 +1,19 @@
+# Context for the local Clef server image: the scorer, a few routing_lab files, and the model folder.
+**/__pycache__
+**/*.pyc
+.git
+.venv
+.env
+outputs
+data
+docs
+tests
+notebooks
+agent_demo
+capability_lab
+routing_data
+contracts
+azure/training
+*.docx
+models/*
+!models/clef-flash-capability-ft-v3

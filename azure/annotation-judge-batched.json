@@ -1,0 +1,7 @@
+{
+  "endpoint": "https://your-resource.services.ai.azure.com/openai/v1/responses",
+  "deployment": "gpt-5.6-sol",
+  "model": "gpt-5.6-sol",
+  "timeout_seconds": 600,
+  "max_output_tokens": 32000
+}

@@ -1,0 +1,26 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: clef-flash-off-the-shelf-probe
+experiment_name: coding-agent-routing
+code: ..
+compute: azureml:clef-gpu
+environment:
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest
+  conda_file: environment.yml
+inputs:
+  variant: flash
+outputs:
+  results:
+    type: uri_folder
+    mode: rw_mount
+command: >-
+  uv sync --frozen --no-dev &&
+  uv pip install --index-url https://download.pytorch.org/whl/cu126 torch==2.11.0 &&
+  uv pip install -r requirements-clef.txt &&
+  uv run --no-sync python -m routing_lab.cli validate --data data/probes.jsonl &&
+  uv run --no-sync python -m routing_lab.cli run
+  --backend clef --probe --allow-model-download
+  --device cuda --variant ${{inputs.variant}}
+  --output ${{outputs.results}}/clef &&
+  uv run --no-sync python -m routing_lab.cli run
+  --backend rules --probe --output ${{outputs.results}}/rules

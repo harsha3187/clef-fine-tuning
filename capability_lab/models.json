@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "note": "The ten endpoints of the capability benchmark. Prices are USD per 1M tokens. Entries with verified=false are placeholders to replace before any cost claim is made about them.",
+  "models": [
+    {"id": "gpt-5.6-luna", "deployment": "gpt-5.6-luna", "family": "OpenAI", "api": "responses", "tools": true, "price_in": 0.2, "price_out": 1.2, "verified": true, "price_source": "Azure retail price API, 2026-10-08"},
+    {"id": "gpt-5.4-nano", "deployment": "gpt-5.4-nano", "family": "OpenAI", "api": "responses", "tools": true, "price_in": 0.2, "price_out": 1.25, "verified": true, "price_source": "Azure retail price API, global, 2026-10-08"},
+    {"id": "phi-4", "deployment": "phi-4", "family": "Microsoft", "api": "chat", "tools": false, "price_in": 0.125, "price_out": 0.5, "verified": true, "price_source": "Azure retail price API, 2026-10-08"},
+    {"id": "llama-4-maverick", "deployment": "llama-4-maverick", "family": "Meta", "api": "responses", "tools": true, "price_in": 0.25, "price_out": 1.0, "verified": true, "price_source": "Azure retail price API, global, 2026-10-08"},
+    {"id": "gpt-oss-120b", "deployment": "gpt-oss-120b", "family": "OpenAI open weights", "api": "responses", "tools": true, "price_in": 0.15, "price_out": 0.6, "verified": true, "price_source": "Azure retail price API, global, 2026-10-08"},
+    {"id": "deepseek-v4-flash", "deployment": "deepseek-v4-flash", "family": "DeepSeek", "api": "responses", "tools": true, "price_in": 0.48, "price_out": 0.96, "verified": false, "price_source": "No price found in the retail catalog; placeholder of one quarter of DeepSeek-V4-Pro's DataZone price"},
+    {"id": "gpt-4.1", "deployment": "gpt-4.1", "family": "OpenAI", "api": "responses", "tools": true, "price_in": 2.0, "price_out": 8.0, "verified": false, "price_source": "Published list price, not re-verified"},
+    {"id": "deepseek-v4-pro", "deployment": "deepseek-v4-pro", "family": "DeepSeek", "api": "responses", "tools": true, "price_in": 1.925, "price_out": 3.828, "verified": false, "price_source": "Azure retail price API, Fireworks DataZone meter; the global price may differ"},
+    {"id": "gpt-5.6-terra", "deployment": "gpt-5.6-terra", "family": "OpenAI", "api": "responses", "tools": true, "price_in": 2.0, "price_out": 12.0, "verified": true, "price_source": "Azure retail price API, 2026-10-08"},
+    {"id": "gpt-5.6-sol", "deployment": "gpt-5.6-sol", "family": "OpenAI", "api": "responses", "tools": true, "price_in": 4.0, "price_out": 20.0, "verified": true, "price_source": "Azure retail price API, 2026-10-08"}
+  ]
+}

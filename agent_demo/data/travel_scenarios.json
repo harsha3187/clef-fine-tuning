@@ -1,0 +1,47 @@
+[
+  {
+    "id": "lisbon-weekend", "title": "Long weekend in Lisbon", "tag": "Destination chosen",
+    "summary": "Dates and destination given: flights, a hotel, sights and food, with holds.",
+    "form": {"origin": "Dubai", "destination": "Lisbon", "start_in_days": 45, "nights": 4, "travelers": 2, "budget": "mid-range",
+             "interests": ["food", "culture"], "notes": ""},
+    "expect": [
+      {"label": "Flight options searched for Lisbon", "tool": "search_flights", "args": {"destination": "Lisbon"}},
+      {"label": "A flight is held", "tool": "hold_flight"},
+      {"label": "A hotel is held", "tool": "hold_hotel"},
+      {"label": "The destination was not re-chosen", "tool": "suggest_destinations", "absent": true}
+    ]
+  },
+  {
+    "id": "warm-escape", "title": "Somewhere warm, no destination", "tag": "Destination open",
+    "summary": "Only dates and interests. The agent must pick a place using the weather first.",
+    "form": {"origin": "Dubai", "destination": "", "start_in_days": 70, "nights": 5, "travelers": 2, "budget": "mid-range",
+             "interests": ["beaches", "food"], "notes": "Somewhere warm and relaxed."},
+    "expect": [
+      {"label": "Destinations suggested using weather", "tool": "suggest_destinations"},
+      {"label": "A flight is held", "tool": "hold_flight"},
+      {"label": "A hotel is held", "tool": "hold_hotel"}
+    ]
+  },
+  {
+    "id": "family-tokyo", "title": "Family week in Tokyo", "tag": "Larger party",
+    "summary": "Four travelers, a week, family-friendly plans and a longer itinerary.",
+    "form": {"origin": "Dubai", "destination": "Tokyo", "start_in_days": 100, "nights": 7, "travelers": 4, "budget": "mid-range",
+             "interests": ["family", "food", "culture"], "notes": "Two children aged 8 and 11."},
+    "expect": [
+      {"label": "Hotels searched for four guests", "tool": "find_hotels", "args": {"guests": 4}},
+      {"label": "A flight is held", "tool": "hold_flight"},
+      {"label": "A hotel is held", "tool": "hold_hotel"}
+    ]
+  },
+  {
+    "id": "budget-city-break", "title": "Budget city break", "tag": "Destination open",
+    "summary": "A short trip on a budget with culture and nightlife; weather and price level matter.",
+    "form": {"origin": "Dubai", "destination": "", "start_in_days": 55, "nights": 3, "travelers": 1, "budget": "budget",
+             "interests": ["culture", "nightlife"], "notes": ""},
+    "expect": [
+      {"label": "Destinations suggested using weather", "tool": "suggest_destinations"},
+      {"label": "A flight is held", "tool": "hold_flight"},
+      {"label": "A hotel is held", "tool": "hold_hotel"}
+    ]
+  }
+]
