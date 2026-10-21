@@ -12,14 +12,17 @@ data/upstream/
 data/public-routing/
 data/splits/
 data/finetuning/
-# Model weights stay out of git, except the one fine-tuned Clef this repo ships (stored with Git LFS, see .gitattributes)
+# Model weights are about 800 MB and are not stored in git: see models/README.md. The model card, checksums and configuration are kept.
 models/*
 !models/README.md
 !models/clef-flash-capability-ft-v3/
+*.safetensors
 .azure/
 # Downloaded and derived datasets: several GB, regenerable with `python -m routing_data ...`, and the upstream licences are not ours to redistribute
 data/external/
 data/canonical/
+# Working files from slide-deck and research sessions (decks, renders, validation PDFs); not part of the code
+.copilot-tracking/
 .test-work/
 *.part
 !.env.example

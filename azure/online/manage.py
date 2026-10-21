@@ -13,10 +13,10 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import AzureCliCredential
 
 SUBSCRIPTION = os.environ.get("AZURE_SUBSCRIPTION_ID", "")  # not stored in the repository: $env:AZURE_SUBSCRIPTION_ID = (az account show --query id -o tsv)
-# Dedicated East US 2 workspace: the H100 quota is regional, and the UAE North Laya workspace has none.
-GROUP = "rg-clef-exp-eus2"
-WORKSPACE = "aml-clef-exp-eus2"
-ENDPOINT = "clef-routing-exp"
+# Your Azure ML workspace and online endpoint (see .env.example). H100 quota is regional, so use a workspace in a region that has it.
+GROUP = os.environ.get("AZURE_RESOURCE_GROUP", "")
+WORKSPACE = os.environ.get("AZURE_ML_WORKSPACE", "")
+ENDPOINT = os.environ.get("AZURE_ML_ENDPOINT", "")
 DEPLOYMENT = "flash-gpu"
 MODEL_NAME = "clef-flash-router-ft"
 
@@ -83,8 +83,10 @@ def main() -> int:
     args = create_parser().parse_args()
     if args.action == "deploy" and not args.approve_cost:
         raise ValueError("Deployment starts billed compute; explicitly pass --approve-cost")
-    if not SUBSCRIPTION:
-        raise SystemExit("Set AZURE_SUBSCRIPTION_ID to your Azure subscription id first.")
+    missing = [name for name, value in (("AZURE_SUBSCRIPTION_ID", SUBSCRIPTION), ("AZURE_RESOURCE_GROUP", GROUP),
+                                        ("AZURE_ML_WORKSPACE", WORKSPACE), ("AZURE_ML_ENDPOINT", ENDPOINT)) if not value]
+    if missing:
+        raise SystemExit("Set " + ", ".join(missing) + " first (see .env.example).")
     client = MLClient(AzureCliCredential(), SUBSCRIPTION, GROUP, WORKSPACE)
     if args.action == "register-model":
         return register_model(client, args)
@@ -102,12 +104,13 @@ def main() -> int:
         try:
             endpoint = client.online_endpoints.get(ENDPOINT)
         except ResourceNotFoundError:
-            endpoint = client.online_endpoints.begin_create_or_update(
-                load_online_endpoint(folder / "endpoint.yml")
-            ).result()
+            new_endpoint = load_online_endpoint(folder / "endpoint.yml")
+            new_endpoint.name = ENDPOINT  # the YAML holds a placeholder name
+            endpoint = client.online_endpoints.begin_create_or_update(new_endpoint).result()
         if endpoint.auth_mode != "aad_token":
             raise ValueError("Refusing to change an existing endpoint with different authentication")
         deployment = load_online_deployment(deployment_config)
+        deployment.endpoint_name = ENDPOINT  # the YAML holds a placeholder name
         if deployment.name != args.deployment_name:
             raise ValueError("Deployment YAML name does not match --deployment-name")
         ensure_environment(client, str(deployment.environment), folder / "environment.yml")

@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 import pytest
-from agent_demo_fakes import FakeDecider, ScriptedLLM
+from agent_demo_fakes import FakeCapabilityRouter, FakeDecider, ScriptedLLM
 
 from agent_demo.server import Engine, serve
 
@@ -82,6 +82,43 @@ def test_theme_detection_script_comes_before_any_other_script_and_colors_are_all
     assert "Segoe UI" in css and "--cp-accent" in css and 'html[data-theme="dark"]' in css
 
 
+def test_switching_example_cases_clears_stale_results_and_cases_lock_during_a_run():
+    script = (Path(__file__).resolve().parents[1] / "agent_demo" / "static" / "app.js").read_text(encoding="utf-8")
+    select_case = script.split("function selectCase(id) {", 1)[1].split("const normForm", 1)[0]
+    set_running = script.split("function setRunning(on) {", 1)[1].split("function follow(run)", 1)[0]
+
+    assert "if (app.run && !app.run.done && !app.run.error)" in select_case
+    assert "app.run = null;" in select_case and "renderResults();" in select_case
+    assert 'document.querySelectorAll("#cases input")' in set_running and "input.disabled = on" in set_running
+
+
+def test_prompt_capture_requires_explicit_opt_in(monkeypatch):
+    from agent_demo.server import build_parser
+
+    monkeypatch.delenv("AIE_CAPTURE_ROUTER_PROMPTS", raising=False)
+    assert build_parser().parse_args([]).capture_router_prompts is False
+    assert build_parser().parse_args(["--capture-router-prompts"]).capture_router_prompts is True
+    monkeypatch.setenv("AIE_CAPTURE_ROUTER_PROMPTS", "1")
+    assert build_parser().parse_args([]).capture_router_prompts is True
+
+
+def test_decision_one_is_opt_in_and_does_not_reuse_clef_url_or_adapter(monkeypatch):
+    from agent_demo.server import build_parser, build_shadow
+
+    monkeypatch.delenv("AIE_ROUTER_PROVIDER", raising=False)
+    assert build_parser().parse_args([]).router_provider == "clef"
+    args = build_parser().parse_args(["--router-provider", "decision-1",
+                                     "--llm-endpoint", "https://r.services.ai.azure.com/openai/v1/"])
+    shadow = build_shadow(args, "https://old.eastus2.inference.ml.azure.com/score")
+    assert shadow.versions["provider"] == "decision-1" and shadow.versions["adapter_sha256"] is None
+    assert shadow.router.url == "https://r.services.ai.azure.com/providers/microsoft/v1/systemone"
+    assert shadow.router.deployment == "decision-1"
+    assert not shadow.use_skill  # keep the same skill hints for a controlled router comparison
+    args.apply_selector = False
+    with pytest.raises(ValueError, match="requires"):
+        build_shadow(args, "unused")
+
+
 @pytest.mark.parametrize("path", ["/static/app.css", "/static/app.js"])
 def test_only_the_two_static_files_are_served(service, path):
     _, port, _ = service
@@ -106,6 +143,38 @@ def test_state_describes_the_models_preferences_cases_and_the_clef_deployment(se
     assert {x["name"] for x in travel["tools"]} >= {"search_web", "search_flights", "hold_hotel"}
     assert {c["id"] for c in travel["scenarios"]} >= {"lisbon-weekend", "warm-escape"}
     assert state["travel_options"]["budgets"] == ["budget", "mid-range", "premium"]
+
+
+def test_api_label_metadata_is_generic_including_empty_and_disabled_views(service):
+    from agent_demo.labels import LANE_LABELS, UI_COPY
+
+    _, port, _ = service
+    for path in ("/api/state", "/api/insights", "/api/shadow"):
+        status, data, _ = call(port, "GET", path)
+        assert status == 200 and data["lane_labels"] == LANE_LABELS
+    state = call(port, "GET", "/api/state")[1]
+    assert state["ui_copy"] == UI_COPY
+    state["lane_labels"]["clef"] = "changed by client"
+    assert call(port, "GET", "/api/state")[1]["lane_labels"] == LANE_LABELS
+    state["ui_copy"]["decision_prompt"] = "client change"
+    assert call(port, "GET", "/api/state")[1]["ui_copy"] == UI_COPY
+
+
+def test_run_api_emits_generic_labels_without_changing_lane_ids(service):
+    from agent_demo.labels import LANE_LABELS
+
+    engine, port, _ = service
+    status, started, _ = call(port, "POST", "/api/run", {"message": "Where is order A-1042?"})
+    assert status == 202
+    wait_done(engine, started["run_id"])
+    status, result, _ = call(port, "GET", f"/api/run/{started['run_id']}?since=0")
+    assert status == 200 and result["done"]
+    lane_events = [e for e in result["events"] if e.get("lane") in LANE_LABELS]
+    assert {e["lane"] for e in lane_events} == {"clef", "baseline"}
+    assert all(e["lane_label"] == LANE_LABELS[e["lane"]] for e in lane_events)
+    summary = next(e for e in result["events"] if e["type"] == "run_done")
+    assert summary["lane_labels"] == LANE_LABELS
+    assert set(summary["lanes"]) == {"clef", "baseline"}
 
 
 # ------------------------------------------------------------------------- guards
@@ -399,8 +468,10 @@ def test_insights_can_be_filtered_by_agent(service):
     assert call(port, "GET", "/api/insights?agent=nope")[0] == 400
 
 def test_shadow_endpoint_reports_disabled_without_a_selector_and_totals_when_one_runs(service, tmp_path):
+    from agent_demo.labels import LANE_LABELS
+
     engine, port, _ = service
-    assert call(port, "GET", "/api/shadow")[1] == {"enabled": False}
+    assert call(port, "GET", "/api/shadow")[1] == {"enabled": False, "lane_labels": LANE_LABELS}
     assert call(port, "GET", "/api/state")[1]["shadow"] == {"enabled": False, "versions": None, "replay": False, "applied": False, "route_planner": False, "route_judge": False, "last": None, "endpoints": []}
 
     from agent_demo.shadow import ShadowSelector
@@ -482,21 +553,6 @@ def test_the_shadow_router_can_be_a_local_clef_container_that_gets_no_azure_toke
     assert shadow.router.backend.url == "http://clef-server:5001/score" and shadow.versions["router"] == "clef-local"
     assert srv.build_shadow(srv.build_parser().parse_args(["--no-shadow"]), "x") is None
 
-class FakeCapabilityRouter:
-    deployment = "fake-cap"
-
-    def __init__(self, tier=None, fail=False):
-        self.tier, self.fail, self.calls = tier or {"low": 0.9, "medium": 0.08, "high": 0.02}, fail, []
-
-    def classify(self, request, context=""):
-        from routing_lab.capability import CapabilityResult
-
-        self.calls.append(request)
-        if self.fail:
-            raise RuntimeError("endpoint down")
-        return CapabilityResult(self.tier, {"coding": 0.1, "reasoning": 0.2, "tools": 0.5, "writing": 0.1, "extraction": 0.1}, 40.0, 120, "fake-cap")
-
-
 @pytest.fixture
 def selecting(service, tmp_path):
     from agent_demo.shadow import ShadowSelector
@@ -530,6 +586,23 @@ def test_select_api_applies_the_callers_constraints(selecting):
     premium = call(port, "POST", "/v1/select", {"request": "Plan the migration", "preferences": {"quality": "very_good", "latency": "high", "cost": "high"}})[1]
     lean = call(port, "POST", "/v1/select", {"request": "Plan the migration", "preferences": {"quality": "average", "latency": "low", "cost": "low"}})[1]
     assert premium["floor"] > lean["floor"]
+
+
+def test_select_api_can_require_json_and_reports_unverified_models(selecting):
+    _, port, _ = selecting
+    status, body, _ = call(port, "POST", "/v1/select", {
+        "request": "Write an itinerary as JSON", "needs_tools": False, "needs_json": True,
+        "allow": ["gpt-oss-120b", "llama-4-maverick"],
+    })
+    assert status == 200 and body["needs_json"] is True
+    assert body["choice"] == "llama-4-maverick"
+    assert body["json_api"] == "chat"
+    assert "JSON" in next(c for c in body["eliminated"] if c["endpoint"] == "gpt-oss-120b")["reasons"][0]
+    none = call(port, "POST", "/v1/select", {
+        "request": "JSON required", "needs_tools": False, "needs_json": True, "allow": ["gpt-oss-120b"],
+    })[1]
+    assert none["choice"] is None and none["needs_json"] is True
+    assert call(port, "POST", "/v1/select", {"request": "x", "needs_json": "yes"})[0] == 400
 
 
 @pytest.mark.parametrize("body", [

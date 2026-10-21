@@ -14,7 +14,7 @@ from agent_demo_fakes import FakeDecider, ScriptedLLM, collect
 from agent_demo import travel
 from agent_demo.agent import Agent, normalize_specialist, parse_plan
 from agent_demo.domains import TRAVEL, travel_message, validate_itinerary
-from agent_demo.llm import LLMResult
+from agent_demo.llm import AzureResponsesClient, LLMError, LLMResult
 from agent_demo.policy import Policy
 from agent_demo.preferences import Preferences
 from agent_demo.registry import Registry
@@ -311,6 +311,7 @@ def test_the_itinerary_is_checked_for_structure_before_any_reviewer_is_paid(part
     bad = [e for e in events if e["type"] == "judge" and e["index"] == 5]
     assert bad and all(e["score"] == 1 and "JSON" in e["reason"] and e["cost_usd"] == 0 for e in bad)
     assert summary["lanes"]["baseline"]["reply_score"] == 1 and summary["lanes"]["clef"]["reply_score"] == 1
+    assert all(summary["lanes"][lane]["failed_steps"] == 1 for lane in ("clef", "baseline"))
     good, _ = run_trip(parts, ScriptedLLM(plan=PLAN, reply_text=ITINERARY))
     assert good["lanes"]["clef"]["reply_score"] == 5 and good["lanes"]["baseline"]["reply_score"] == 5
 
@@ -343,9 +344,101 @@ def test_parallel_sub_agents_cost_the_time_of_the_slowest_not_the_sum(parts):
 
 def test_a_long_itinerary_reaches_the_screen_whole(parts):
     long_trip = json.dumps({"title": "Long", "days": [{"day": 1, "date": "2026-11-20", "title": "Day", "items": [
-        {"time": "Morning", "kind": "sight", "title": "Walk", "detail": "x" * 9000, "url": None}]}]})
-    _, events = run_trip(parts, ScriptedLLM(plan=PLAN, reply_text=long_trip))
+        {"time": "Morning", "kind": "sight", "title": "Walk", "detail": "x" * 30000, "url": None}]}],
+        "caveats": ["End of complete itinerary"]})
+    llm = ScriptedLLM(plan=PLAN, reply_text=long_trip)
+    _, events = run_trip(parts, llm)
     replies = [e for e in events if e["type"] == "exec" and e["index"] == 5]
     assert replies and all(len(e["output"]) == len(long_trip) and json.loads(e["output"]) for e in replies)
+    reviews = [c for c in llm.calls if (c["system"] or "").startswith("You grade") and "Compose it." in (c["user"] or "")]
+    assert len(reviews) >= 2
+    assert all(c["user"].split("\n\nOUTPUT:\n", 1)[1] == long_trip for c in reviews)
     steps = [e for e in events if e["type"] == "exec" and e["index"] == 2]
     assert all(len(e["output"]) <= 5000 for e in steps)
+
+
+class ReplySequence:
+    def __init__(self, *results):
+        self.results = list(results)
+        self.calls = []
+
+    def complete(self, deployment, **kwargs):
+        self.calls.append({"deployment": deployment, **kwargs})
+        result = self.results.pop(0)
+        if isinstance(result, LLMError):
+            raise result
+        return result
+
+
+def execute_json_reply(parts, llm, limit=5000):
+    registry, policy, telemetry = parts
+    agent = Agent(AdaptiveRouter(registry, policy, FakeDecider(), telemetry), llm, registry, policy, telemetry)
+    return agent._execute(registry.get("gpt-5.6-sol"), "reply", {"instruction": "Compose it.", "reply": True},
+                          "Plan a week in Tokyo.", ["Known trip facts."], None, TRAVEL, limit)
+
+
+@pytest.mark.parametrize("limit", [1500, 5000, 6000])
+def test_json_replies_use_the_same_budget_regardless_of_execution_lane(parts, limit):
+    llm = ReplySequence(LLMResult(ITINERARY, 100, 200, 10.0, "completed"))
+    result = execute_json_reply(parts, llm, limit)
+    assert result["text"] == ITINERARY and result["output_error"] is None
+    assert len(llm.calls) == 1
+    assert llm.calls[0]["json_object"] is True
+    assert llm.calls[0]["max_output_tokens"] == TRAVEL.reply_tokens == 6000
+
+
+@pytest.mark.parametrize("first", [
+    LLMResult('{"days":[', 100, 6000, 10.0, "incomplete"),
+    LLMResult("## Tokyo itinerary\nVisit a temple.", 100, 200, 10.0, "completed"),
+    LLMResult(ITINERARY, 100, 6000, 10.0, "incomplete"),
+    LLMResult('{"days":[]}', 100, 200, 10.0, "completed"),
+])
+def test_invalid_or_incomplete_json_is_regenerated_once_and_all_usage_is_counted(parts, first):
+    llm = ReplySequence(first, LLMResult(ITINERARY, 150, 300, 20.0, "completed"))
+    result = execute_json_reply(parts, llm)
+    assert result["text"] == ITINERARY and result["output_error"] is None
+    assert result["input_tokens"] == first.input_tokens + 150
+    assert result["output_tokens"] == first.output_tokens + 300
+    assert result["latency_ms"] == 30.0
+    assert [c["max_output_tokens"] for c in llm.calls] == [6000, 12000]
+    assert {c["deployment"] for c in llm.calls} == {"gpt-5.6-sol"}
+    assert all(c["json_object"] and "tools" not in c and "previous_response_id" not in c for c in llm.calls)
+    assert llm.calls[0]["user"] == llm.calls[1]["user"]
+    assert len(result["json_attempts"]) == 2 and result["json_attempts"][0]["error"]
+
+
+def test_json_recovery_failure_is_explicit_and_keeps_paid_usage(parts):
+    llm = ReplySequence(LLMResult("not JSON", 100, 200, 10.0, "completed"), LLMError("gateway unavailable"))
+    result = execute_json_reply(parts, llm)
+    assert "gateway unavailable" in result["output_error"]
+    assert result["input_tokens"] == 100 and result["output_tokens"] == 200
+    assert result["latency_ms"] == 10.0 and len(result["json_attempts"]) == 2
+
+
+def test_json_recovery_is_bounded_and_never_turns_invalid_text_into_a_success(parts):
+    llm = ReplySequence(*(LLMResult('{"days":[', 100, 6000, 10.0, "incomplete") for _ in range(2)))
+    result = execute_json_reply(parts, llm)
+    assert result["output_error"] and len(llm.calls) == 2
+    assert validate_itinerary(result["text"]) is not None
+    assert result["output_tokens"] == 12000
+
+
+@pytest.mark.parametrize("payload", [
+    {"status": "incomplete", "incomplete_details": {"reason": "content_filter"}, "output": []},
+    {"status": "completed", "output": [{"type": "message", "content": [{"type": "refusal", "refusal": "Cannot comply."}]}]},
+])
+def test_filtered_or_refused_outputs_are_reported_without_regeneration(parts, payload):
+    parsed = AzureResponsesClient._parse(payload, 10.0)
+    llm = ReplySequence(parsed)
+    result = execute_json_reply(parts, llm)
+    assert result["output_error"] and len(llm.calls) == 1
+
+
+def test_model_client_keeps_the_incomplete_reason():
+    result = AzureResponsesClient._parse({
+        "status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"},
+        "output": [{"type": "message", "content": [{"type": "output_text", "text": '{"days":['}]}],
+        "usage": {"input_tokens": 100, "output_tokens": 6000},
+    }, 15.0)
+    assert result.status == "incomplete" and result.incomplete_reason == "max_output_tokens"
+    assert result.output_tokens == 6000 and result.text == '{"days":['

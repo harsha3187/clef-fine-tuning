@@ -8,7 +8,7 @@
 # needs about 20 GB of memory and takes tens of seconds per request. The 18 GB base model (Cloudflare/clef-flash, Apache-2.0,
 # pinned revision) is downloaded from Hugging Face into /cache/huggingface on first start; mount a volume there.
 #
-# Run `git lfs pull` before building the baked image, or the weights will be pointer files (the container checks and says so).
+# Put the weights in models/clef-flash-capability-ft-v3 before building the baked image (see models/README.md); the container checks and says so.
 
 ARG PYTHON_VERSION=3.11
 FROM python:${PYTHON_VERSION}-slim AS runtime

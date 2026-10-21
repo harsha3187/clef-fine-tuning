@@ -20,8 +20,8 @@ from routing_lab.finetune_data import TRACKS, verify_bundle
 
 DEFAULTS = {
     "subscription": os.environ.get("AZURE_SUBSCRIPTION_ID", ""),  # not stored in the repository
-    "resource_group": "rg-clef-exp-eus2",
-    "workspace": "aml-clef-exp-eus2",
+    "resource_group": os.environ.get("AZURE_RESOURCE_GROUP", ""),  # not stored in the repository
+    "workspace": os.environ.get("AZURE_ML_WORKSPACE", ""),  # not stored in the repository
     "compute": "clef-gpu-train",
 }
 ROOT = Path(__file__).resolve().parents[2]
@@ -150,6 +150,9 @@ def main() -> int:
     args = create_parser().parse_args()
     if args.submit:
         _require_consent(args)
+        if not (args.subscription and args.resource_group and args.workspace):
+            raise ValueError("Set AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP and AZURE_ML_WORKSPACE, "
+                         "or pass --subscription, --resource-group and --workspace")
     if args.command == "train":
         stage = stage_capability if args.kind == "capability" else stage_training
         job_path = stage(args.bundle, args.config, args.output)

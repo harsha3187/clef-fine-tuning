@@ -1,6 +1,6 @@
 $schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
 name: flash-gpu
-endpoint_name: clef-routing-exp
+endpoint_name: my-clef-endpoint
 code_configuration:
   code: code
   scoring_script: score.py

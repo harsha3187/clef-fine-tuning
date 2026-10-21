@@ -43,6 +43,11 @@ class Endpoint:
     api: str = "responses"  # which client can call it; "chat" endpoints have no Responses API
     allowed: bool = True
     healthy: bool = True
+    json_api: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.json_api not in (None, "responses", "chat"):
+            raise ValueError("json_api must be responses, chat, or null (not verified)")
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,7 @@ class Constraints:
     needs_tools: bool = False
     input_tokens: int = 600
     output_tokens: int = 400
+    needs_json: bool = False
 
 
 @dataclass
@@ -144,7 +150,7 @@ def select(endpoints: list[Endpoint], rate: RateFn, tier_probabilities: dict[str
     confidence = max(tiers.values())
     warnings = []
     if confidence < settings.confidence_threshold:
-        warnings.append(f"Clef's top tier has only {confidence:.0%} probability")
+        warnings.append(f"The router's top tier has only {confidence:.0%} probability")
     if tiers.get("high", 0.0) >= settings.high_tier_probability:
         warnings.append(f"{tiers['high']:.0%} of the probability is on the high tier")
     effective_floor = round(settings.floor + (settings.uncertainty_margin if warnings else 0.0), 4)
@@ -161,6 +167,10 @@ def select(endpoints: list[Endpoint], rate: RateFn, tier_probabilities: dict[str
             item.reasons.append("marked unhealthy")
         elif constraints.needs_tools and not e.supports_tools:
             item.reasons.append("cannot call tools")
+        elif constraints.needs_json and e.json_api is None:
+            item.reasons.append("no verified JSON output transport")
+        elif constraints.needs_json and constraints.needs_tools and e.json_api == "chat":
+            item.reasons.append("JSON over Chat Completions is verified only for single-turn calls without tools")
         elif constraints.input_tokens > e.context_window:
             item.reasons.append("request does not fit the context window")
         else:
@@ -249,11 +259,3 @@ class MeasuredRegistry:
                 shares["exact" if cell[1] >= MIN_CELL else "pooled" if pool[1] >= MIN_CELL else "missing"] += p_tier * p_skill
         total = sum(shares.values()) or 1.0
         return {f"{k}_share": round(v / total, 4) for k, v in shares.items()}
-
-    def with_changes(self, **flags: dict[str, bool]) -> list[Endpoint]:
-        """Endpoints with allow-list or health overrides, such as allowed={"phi-4": False}."""
-        out = []
-        for e in self.endpoints:
-            changes = {k: v[e.id] for k, v in flags.items() if e.id in v}
-            out.append(Endpoint(**{**asdict(e), **changes}) if changes else e)
-        return out

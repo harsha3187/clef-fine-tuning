@@ -17,7 +17,7 @@ from routing_lab.endpoint import TOKEN_SCOPE, ClefEndpointBackend
 from routing_lab.data import Contract
 from routing_lab.taxonomy import TAXONOMIES, taxonomy_routes
 
-URL = "https://clef-routing-exp.eastus2.inference.ml.azure.com/score"
+URL = "https://example-endpoint.eastus2.inference.ml.azure.com/score"
 
 
 @pytest.fixture
@@ -64,6 +64,18 @@ def test_predict_state_sends_the_given_text_verbatim(remote, contracts):
     result = ClefEndpointBackend(contracts, url=URL).predict_state("Step: summarise the incident.")
     assert result.route == "repository_qa"
     assert post.call_args.kwargs["json"]["state"] == "Step: summarise the incident."
+
+
+@pytest.mark.parametrize("max_length", [None, 4096])
+def test_inspectable_request_matches_transmitted_body_without_headers(remote, contracts, max_length):
+    credential, post, _, _ = remote
+    backend = ClefEndpointBackend(contracts, url=URL, max_length=max_length)
+    captured = backend.request_payload("User request:\nLook up a hotel.")
+    post.assert_not_called()
+    credential.get_token.assert_not_called()
+    backend.predict_state("User request:\nLook up a hotel.")
+    assert captured == post.call_args.kwargs["json"]
+    assert set(captured) == ({"state", "questions"} if max_length is None else {"state", "questions", "max_length"})
 
 
 def test_max_length_omitted_keeps_body_unchanged(remote, contracts, make_record):

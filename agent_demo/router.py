@@ -114,7 +114,7 @@ class AdaptiveRouter:
             fallback_used = True
             warnings.append("No candidate was eligible; the configured safe fallback model was used.")
         if clef.source == "fallback":
-            warnings.append(f"Clef was unavailable ({clef.error}); a deterministic default step type was used.")
+            warnings.append(f"The decision model was unavailable ({clef.error}); a deterministic default step type was used.")
         if selection.note:
             warnings.append(selection.note)
         chosen = next(m for m in models if m.id == selected_id)
@@ -143,8 +143,8 @@ class AdaptiveRouter:
 
     @staticmethod
     def _reason(clef: ClefDecision, skill: str, required: float, model: str, mode: str, below: bool) -> str:
-        source = (f"Clef classified the step as {clef.route} ({clef.confidence:.0%})" if clef.source == "clef"
-                  else f"Clef was unavailable, so the safe default step type {clef.route} was used")
+        source = (f"The decision model classified the step as {clef.route} ({clef.confidence:.0%})" if clef.source == "clef"
+                  else f"The decision model was unavailable, so the safe default step type {clef.route} was used")
         tail = ", but no model fully reached the quality floor" if below else ""
         return (f"{source}. That needs {skill} capability of about {required:.0%} in {mode} mode, so "
                 f"{model} gives the best utility among eligible models{tail}.")

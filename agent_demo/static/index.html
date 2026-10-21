@@ -46,7 +46,7 @@
       <button type="button" class="prefs-summary" id="prefs-summary" aria-label="Change routing preferences"></button>
     </div>
     <div class="desk">
-      <aside class="composer" aria-label="Customer message">
+      <aside class="composer" aria-labelledby="composer-title">
         <h2 id="composer-title">Customer message</h2>
         <div class="field">
           <label id="cases-label">Start from an example</label>
@@ -62,7 +62,7 @@
         <div id="composer-travel" hidden></div>
         <div id="expect" class="expect" hidden></div>
         <button type="button" id="run" class="btn primary block">Run both ways</button>
-        <p class="hint">Runs call your Azure OpenAI deployments: a few cents for support, roughly $0.4 to $1 for a trip (web search included). Nothing outside this app changes.</p>
+        <p class="hint">Runs call the configured model endpoints and incur usage charges. Costs vary with the task, selected models, retries and web searches. Store changes and booking holds are simulated.</p>
       </aside>
       <div id="results" class="results" aria-live="polite"></div>
     </div>

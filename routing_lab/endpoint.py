@@ -1,4 +1,4 @@
-﻿"""Call the pinned Clef deployment from a client, using the Azure identity configured in routing_lab.azure_auth.
+"""Call the pinned Clef deployment from a client, using the Azure identity configured in routing_lab.azure_auth.
 
 By default that is the Azure CLI identity. A locally served Clef container (``local=True``) needs no identity at all.
 """
@@ -133,10 +133,15 @@ class ClefEndpointBackend:
                 self._sleep(min(self._gateway_retry_backoff_seconds * (attempt + 1), 20.0))
         raise AssertionError("Unreachable: loop always returns or raises")
 
-    def _send(self, state_text: str) -> Decision:
+    def request_payload(self, state_text: str) -> dict[str, object]:
+        """The native request body, without transport headers or credentials."""
         body: dict[str, object] = {"state": state_text, "questions": self.question}
         if self.max_length is not None:
             body["max_length"] = self.max_length
+        return body
+
+    def _send(self, state_text: str) -> Decision:
+        body = self.request_payload(state_text)
         headers = {"Content-Type": "application/json"}
         if not self.local:
             token = self._bearer_token()
@@ -153,12 +158,12 @@ class ClefEndpointBackend:
             if response.status_code != 200:
                 # Error bodies can echo source text; do not include them in local logs.
                 raise RuntimeError(
-                    f"Clef endpoint returned HTTP {response.status_code}; "
+                    f"Decision-model endpoint returned HTTP {response.status_code}; "
                     "check deployment health, scoring permissions and Azure logs"
                 )
             payload = response.json()
         if not isinstance(payload, dict) or not self._provenance_matches(payload.get("experiment_model")):
-            raise ValueError("Endpoint model provenance differs from the pinned Clef release")
+            raise ValueError("Endpoint model provenance differs from the pinned router release")
         return decision_from_native(payload, self.taxonomy_id)
 
     def _provenance_matches(self, reported: object) -> bool:

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
+import hashlib
+import json
 from typing import Any
 
 from capability_lab.clients import ModelSpec
@@ -49,11 +51,14 @@ def build_registry(models: dict[str, ModelSpec], runs: list[dict[str, Any]], lab
         endpoints.append({
             "id": model_id, "deployment": spec.deployment, "price_in": spec.price_in, "price_out": spec.price_out,
             "supports_tools": spec.tools, "verified_price": spec.verified, "api": spec.api,
+            "json_api": spec.json_api,
             "mean_out_tokens": round(sum(out_tokens[model_id]) / len(out_tokens[model_id]), 1),
             "lat_base_ms": round(base, 1), "lat_per_token_ms": round(slope, 3),
             "cells": {skill: {tier: [cell[0], int(cell[1])] for tier, cell in tiers.items()} for skill, tiers in cells[model_id].items()},
         })
-    return {"schema": 1, "version": f"measured-{tasks_hash}", "built": (built or date.today()).isoformat(),
+    formats = {e["id"]: e["json_api"] for e in endpoints if e["json_api"] is not None}
+    suffix = "-formats-" + hashlib.sha256(json.dumps(formats, sort_keys=True).encode()).hexdigest()[:8] if formats else ""
+    return {"schema": 1, "version": f"measured-{tasks_hash}{suffix}", "built": (built or date.today()).isoformat(),
             "source": {"tasks_hash": tasks_hash, "attempts": len(runs), "labelled_tasks": len(labels),
                        "note": "Pass counts by skill and tier from the capability benchmark; latency is a fit on short non-streaming calls."},
             "endpoints": endpoints}

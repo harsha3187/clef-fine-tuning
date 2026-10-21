@@ -142,7 +142,7 @@ def test_submission_sets_plain_compute_name_and_model_input(stage, bundle, confi
     monkeypatch.setattr(sys, "argv", [
         "stage", "eval", "--bundle", str(bundle), "--source", str(source), "--output", str(tmp_path / "e"),
         "--submit", "--approve-cost", "--approve-upload", "--approve-test-use", "--model-job", "train-job-7",
-        "--compute", "clef-gpu-train"])
+        "--compute", "clef-gpu-train", "--subscription", "sub", "--resource-group", "rg", "--workspace", "ws"])
     assert stage.main() == 0
     assert job.compute == "clef-gpu-train"
     assert job.inputs["model"].path == "azureml://datastores/workspaceblobstore/paths/azureml/train-job-7/results/"

@@ -66,6 +66,16 @@ def test_the_request_text_reaches_the_endpoint_in_the_trained_format():
     router.backend.predict_state.assert_called_once_with("User request:\nReformat this date.\nAvailable context:\nno tools")
 
 
+def test_inspectable_prompt_uses_the_same_state_without_inference():
+    router = router_with(decision())
+    router.backend.request_payload.side_effect = lambda state: {"state": state, "questions": {}}
+    captured = router.request_payload("  Reformat this date.  ", context="no tools")
+    assert captured["state"] == "User request:\nReformat this date.\nAvailable context:\nno tools"
+    router.backend.predict_state.assert_not_called()
+    router.classify("  Reformat this date.  ", context="no tools")
+    router.backend.predict_state.assert_called_once_with(captured["state"])
+
+
 @pytest.mark.parametrize("answer", [
     Decision(taxonomy_id="capability-v1", route="low", probabilities={"low": 1.0, "medium": 0.0, "high": 0.0}),
     decision(skill_probabilities={"coding": 1.0, "reasoning": 0.0, "tools": 0.0, "writing": 0.0, "extraction": 0.0, "magic": 0.0}),

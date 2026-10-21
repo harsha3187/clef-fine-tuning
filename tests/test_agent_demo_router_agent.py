@@ -65,7 +65,7 @@ def test_clef_outage_degrades_to_a_safe_default_that_errs_toward_capability(part
     ok = make_router(parts).route(RoutingContext(step_text="Fix it", domain="code"))
     down = make_router(parts, FakeDecider(fail=True)).route(RoutingContext(step_text="Fix it", domain="code"))
     assert down.clef["source"] == "fallback" and down.clef["route"] == "debugging"
-    assert any("Clef was unavailable" in w for w in down.warnings) and "safe default" in down.reason
+    assert any("The decision model was unavailable" in w for w in down.warnings) and "safe default" in down.reason
     assert any("unsure" in name for name, _ in down.requirement["parts"])
     assert down.requirement["total"] > ok.requirement["total"]
 

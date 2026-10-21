@@ -184,6 +184,8 @@ td { padding: 10px 12px; border-bottom: 1px solid var(--cp-border); vertical-ali
 th.r, td.r { text-align: right; }
 tbody tr:last-child td { border-bottom: 0; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface); }
+.router-details { padding: var(--s4); }
+[data-model-value] { overflow-wrap: anywhere; }
 tr.off td { opacity: 0.55; }
 
 /* ---- support desk ---- */
@@ -215,6 +217,7 @@ tr.off td { opacity: 0.55; }
 
 .results > * + * { margin-top: var(--s6); }
 .section-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); }
+.itinerary-controls { flex-wrap: wrap; }
 .section-title .hint { margin: 0; }
 .empty { padding: var(--s6); border: 1px dashed var(--cp-border-strong); border-radius: 12px; }
 .empty h2 { margin-bottom: var(--s2); }

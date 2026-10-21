@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_demo.preferences import Preferences
+from agent_demo.labels import LANE_LABELS
 from agent_demo.server import (
     CAPABILITY_ADAPTER_SHA256,
     CAPABILITY_DEPLOYMENT,
@@ -50,11 +51,13 @@ def study(engine: Engine, tasks: list[Any], prefs: Preferences) -> list[dict[str
             passed["selector_replay"] = ok / total
         rows.append({
             "task": task.id, "level": task.level, "outcomes": passed,
+            "lane_labels": {**LANE_LABELS, "selector_replay": "Selector replay"},
             "choices": sorted({r["decision"]["choice"] for r in summary["rows"] if r["decision"].get("choice")}) if summary else [],
             "tiers": [r["decision"]["tier"] for r in summary["rows"] if r["decision"].get("tier")] if summary else [],
             "replay_cost_usd": replay["cost_usd"] if replay else None, "strongest_cost_usd": replay["baseline_cost_usd"] if replay else None,
             "judge": [replay["mean_score"], replay["baseline_mean_score"]] if replay else None})
-        print(f"{task.id} L{task.level}: {passed}  choices {rows[-1]['choices']}", flush=True)
+        shown = {rows[-1]["lane_labels"][key]: value for key, value in passed.items()}
+        print(f"{task.id} L{task.level}: {shown}  choices {rows[-1]['choices']}", flush=True)
     return rows
 
 
@@ -87,7 +90,8 @@ def main() -> int:
         values = [r["outcomes"][key] for r in items if key in r["outcomes"]]
         return f"{sum(values) / len(values):.0%} of expected outcomes over {len(values)} tasks" if values else "n/a"
 
-    for key, label in (("baseline", "always strongest"), ("clef", "Clef lane (old step router)"), ("selector_replay", "selector's choices")):
+    for key, label in (("baseline", LANE_LABELS["baseline"]), ("clef", LANE_LABELS["clef"] + " (legacy step router)"),
+                       ("selector_replay", "Selector replay")):
         print(f"{label:30} {rate(key, rows)}")
     print(f"Wrote {out}")
     return 0

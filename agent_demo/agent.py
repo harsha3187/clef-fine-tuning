@@ -2,9 +2,9 @@
 
 One shared plan is executed by two lanes in parallel, each on its own copy of the world:
 
-* **With Clef**: each step is classified by the fine-tuned Clef model, then the policy (shaped by the user's quality,
+* **Adaptive routing**: each step is classified by the configured decision model, then the policy (shaped by the user's quality,
   latency and cost preferences) picks the model, and a quality check can escalate a weak result.
-* **Without Clef**: the common default of sending every step to the strongest model with every tool attached.
+* **Always strongest**: the common default of sending every step to the strongest model with every tool attached.
 
 Both lanes are scored by the same blind judge and checked against the same expected outcomes, so the savings
 shown are measured, not estimated. A domain (support, travel) supplies the tools, prompts and plan shape.
@@ -27,6 +27,7 @@ from agent_demo import ROUTER_VERSION
 from agent_demo.clef_decider import ClefDecision
 from agent_demo.domains import DOMAINS, Domain
 from agent_demo.llm import AzureResponsesClient, LLMError, LLMResult
+from agent_demo.labels import LANE_LABELS, label_events
 from agent_demo.policy import Policy
 from agent_demo.preferences import Preferences
 from agent_demo.registry import ModelProfile, Registry
@@ -36,7 +37,7 @@ from agent_demo.telemetry import Telemetry
 from routing_lab.selector import Settings
 
 Emit = Callable[[dict[str, Any]], None]
-LANES = ("clef", "baseline")
+LANES = tuple(LANE_LABELS)
 MAX_TOOL_TURNS = 6
 REPLAY_MIN_TOKENS = 3000
 CLARIFY_CONFIDENCE = 0.8
@@ -143,6 +144,7 @@ def lane_view(t: dict[str, Any]) -> dict[str, Any]:
             "tokens_in": t["tokens_in"], "tokens_out": t["tokens_out"], "check_tokens": t["check_tokens"],
             "exec_tokens": t["tokens_in"] + t["tokens_out"],
             "tokens_total": t["tokens_in"] + t["tokens_out"] + t["check_tokens"], "clef_tokens": t["clef_tokens"],
+            "router_tokens": t["clef_tokens"],
             "latency_ms": round(t["latency_ms"], 1),
             "avg_score": round(sum(scores) / len(scores), 2) if scores else None,
             "reply_score": t["reply_score"], "escalations": t["escalations"], "steps_done": t["steps_done"],
@@ -165,12 +167,12 @@ class Agent:
                  route_planner: bool = False, route_judge: bool = False) -> None:
         self.router, self.llm, self.registry, self.policy = router, llm, registry, policy
         self.telemetry, self.domains, self.shadow = telemetry, domains or DOMAINS, shadow
-        # With apply_selector the Clef lane runs on what the capability router and selector choose, so a replay of the same
+        # With apply_selector the adaptive lane runs on what the capability router and selector choose, so a replay of the same
         # choices on a second desk would only repeat that work.
         self.apply_selector = apply_selector and shadow is not None
         self.shadow_replay = shadow_replay and shadow is not None and not self.apply_selector
-        # The planner and the reviewer are model calls too. When routed, Clef reads the planning or review task and the selector
-        # picks the endpoint; the fixed models in the policy stay as the fallback if that endpoint or Clef fails.
+        # The planner and the reviewer are model calls too. The router reads the planning or review task and the selector
+        # picks the endpoint; the fixed models in the policy stay as the fallback if that endpoint or the router fails.
         self.route_planner = route_planner and self.apply_selector
         self.route_judge = route_judge and self.apply_selector
         self.json_excluded = load_json_exclusions()
@@ -179,6 +181,7 @@ class Agent:
 
     def run(self, message: str, *, prefs: Preferences, expectations: list[dict[str, Any]] | None = None,
             agent: str = "support", emit: Emit = lambda event: None) -> dict[str, Any]:
+        emit = label_events(emit)
         limits = self.policy.limits
         if agent not in self.domains:
             raise ValueError(f"Unknown agent {agent!r}")
@@ -190,6 +193,9 @@ class Agent:
         started = time.perf_counter()
         baseline = self._price(self.policy.baseline_model)
         emit({"type": "run_started", "task_id": task_id, "agent": domain.id, "request": message[:900],
+              "lane_labels": LANE_LABELS.copy(),
+              "router_name": self.shadow.versions["display_name"] if self.apply_selector else "Clef",
+              "router_provider": self.shadow.versions["provider"] if self.apply_selector else "clef",
               "preferences": prefs.to_dict(), "mode": {"quality_floor": derived.mode.quality_floor, "cost_weight": derived.mode.lambda_cost,
                        "latency_weight": derived.mode.mu_latency, "gate_min_score": derived.gate_min_score},
               "baseline_model": baseline.id, "router_version": ROUTER_VERSION,
@@ -218,9 +224,9 @@ class Agent:
         return self.registry.get(model_id)
 
     def _route_aux(self, role: str, text: str, derived: Any, task_id: str, tokens: tuple[int, int], bonus: float = 0.0) -> dict[str, Any]:
-        """Ask Clef which endpoint should do one of the agent's own calls (the planner or the reviewer).
+        """Ask the decision model which endpoint should do one of the agent's own calls (the planner or reviewer).
 
-        Returns the decision for the screen. `endpoint` is None when Clef did not answer or nothing qualified; the caller then
+        Returns the decision for the screen. `endpoint` is None when the router did not answer or nothing qualified; the caller then
         uses the fixed model from the policy.
         """
         assert self.shadow is not None
@@ -228,19 +234,21 @@ class Agent:
         settings = replace(base, floor=min(0.97, base.floor + bonus))
         left_out = self.json_excluded[role]
         allow = frozenset(e.id for e in self.shadow.registry.endpoints if e.api == "responses") - left_out
-        event = self.shadow.decide(ShadowItem(role, role, text, False, *tokens), settings, allow)
+        event = self.shadow.decide(ShadowItem(role, role, text, False, *tokens, needs_json=True), settings, allow)
         self.shadow.log({"task_id": task_id, **event})
         if event["type"] != "shadow_decision" or not event["choice"]:
             reason = event.get("error") or "no endpoint was eligible"
-            return {"role": role, "endpoint": None, "source": "fallback", "error": reason, "router_ms": 0.0, "router_cost_usd": 0.0}
+            return {"role": role, "endpoint": None, "source": "fallback", "error": reason, "router_ms": 0.0, "router_cost_usd": 0.0,
+                    "router_request": event.get("router_request")}
         top = event["tier_probabilities"]
         return {"role": role, "endpoint": self.shadow.endpoint(event["choice"]), "source": "clef", "model": event["choice"],
                 "display": display_name(event["choice"]), "route": event["tier"], "probabilities": top, "confidence": event["confidence"],
                 "reason": event["reason"], "floor": round(settings.floor, 4), "left_out_for_json": sorted(left_out), "expected_success": event["expected_success"],
-                "router_ms": event["router_ms"], "router_cost_usd": self.policy.router_cost_usd}
+                "router_ms": event["router_ms"], "router_cost_usd": event.get("router_cost_usd", self.policy.router_cost_usd),
+                "router_request": event.get("router_request")}
 
     def _judge_choice(self, event: dict[str, Any], derived: Any) -> dict[str, Any]:
-        """Pick the reviewer for a step from the answer Clef already gave for that step, so checking costs no extra Clef call.
+        """Pick the reviewer from the existing decision, without an extra decision-model call.
 
         The work being checked and the check are about equally hard, so the reviewer is chosen for the same capability need. It is
         chosen as reasoning work (judging, not doing the step), and held to a higher bar than the work: a reviewer that is too weak
@@ -253,7 +261,7 @@ class Agent:
         allow = frozenset(e.id for e in self.shadow.registry.endpoints if e.api == "responses") - left_out
         reasoning = {"reasoning": 1.0}
         selection = self.shadow.reselect({**event, "skill_probabilities": reasoning, "skill_hint": reasoning},
-                                         ShadowItem("judge", "judge", "", False, 1500, 150), settings, allow)
+                                         ShadowItem("judge", "judge", "", False, 1500, 150, needs_json=True), settings, allow)
         if selection.choice is None:
             return {"role": "judge", "endpoint": None, "source": "fallback", "error": "no endpoint was eligible", "router_ms": 0.0,
                     "router_cost_usd": 0.0}
@@ -295,7 +303,7 @@ class Agent:
         if steps is None:
             steps = fallback_plan(message)
         elif position > 0 and routing:
-            note = f"The planner Clef chose ({routing['display']}) did not give a usable plan, so {fixed.id} planned it."
+            note = f"The planner the router chose ({routing['display']}) did not give a usable plan, so {fixed.id} planned it."
         event: dict[str, Any] = {"type": "plan", "steps": steps, "planner_model": used.id, "note": note}
         if routing:
             router_cost = routing["router_cost_usd"] if routing["source"] == "clef" else 0.0
@@ -314,13 +322,15 @@ class Agent:
         if self.shadow is None:
             return None
         settings = Settings(derived.mode.quality_floor, derived.mode.lambda_cost, derived.mode.mu_latency)
-        items = [] if self.route_planner else [ShadowItem("plan", "plan", message, False, plan_tokens[0] or 600, plan_tokens[1] or 400)]
+        items = [] if self.route_planner else [ShadowItem("plan", "plan", message, False, plan_tokens[0] or 600,
+                                                        plan_tokens[1] or 400, needs_json=True)]
         for number, step in enumerate(steps, start=1):
             text = step["instruction"]
             if step["reply"]:  # a reply step only says "write the answer"; the customer's request carries its difficulty
                 text = f"{text}\n\nRequest being answered:\n{message[:1500]}"
             items.append(ShadowItem(str(number), "reply" if step["reply"] else "step", text, not step["reply"],
-                                    min(len(text) // 4 + 600, 4000), domain.reply_tokens if step["reply"] else 400))
+                                    min(len(text) // 4 + 600, 4000), domain.reply_tokens if step["reply"] else 400,
+                                    needs_json=step["reply"] and domain.reply_json))
         allow = frozenset(e.id for e in self.shadow.registry.endpoints if e.api == "responses") if self.apply_selector else None
         run = ShadowRun(self.shadow, settings, emit, task_id, allow)
         emit({"type": "shadow_started", "versions": self.shadow.versions, "decisions": len(items), "applied": self.apply_selector,
@@ -388,7 +398,7 @@ class Agent:
 
     @staticmethod
     def _compare(index: int, lane: str, view: dict[str, Any], shared: dict[str, Any], emit: Emit) -> None:
-        """Once both lanes have finished a step, emit what the Clef lane saved on it."""
+        """Once both lanes have finished a step, emit what adaptive routing saved on it."""
         with shared["lock"]:
             pair = shared["pending"].setdefault(index, {})
             pair[lane] = view
@@ -405,7 +415,7 @@ class Agent:
                         "tokens": _saved(base["tokens"], clef["tokens"]),
                         "latency": _saved(base["latency_ms"], clef["latency_ms"])}})
 
-    # ---- lane: with Clef
+    # ---- adaptive routing through the legacy step-type router
 
     def _clef_step(self, index: int, step: dict[str, Any], shared: dict[str, Any], desk: Any,
                    totals: dict[str, Any], summaries: list[str], emit: Emit) -> dict[str, Any]:
@@ -468,7 +478,7 @@ class Agent:
             counted["steps"] += 1
             counted["cost_usd"] = round(counted["cost_usd"] + cost, 6)
             view.update(model=model.id, tier=model.tier, route=clef.route, confidence=clef.confidence,
-                        attempts=attempt + 1, output=run["text"])
+                        attempts=attempt + 1, output=run["text"], output_error=run.get("output_error"))
             view["cost_usd"] += cost
             view["tokens"] += run["input_tokens"] + run["output_tokens"]
             view["exec_tokens"] += run["input_tokens"] + run["output_tokens"]
@@ -478,7 +488,8 @@ class Agent:
             emit({"type": "exec", "lane": "clef", "index": index, "attempt": attempt, "model": model.id,
                   "tier": model.tier, "style": style, "latency_ms": run["latency_ms"], "router_ms": decision.router_ms,
                   "input_tokens": run["input_tokens"], "output_tokens": run["output_tokens"],
-                  "cost_usd": round(cost, 6), "output": run["text"][:self._cap(domain, step)], "tool_calls": run["tool_calls"]})
+                  "cost_usd": round(cost, 6), "output": run["text"][:self._cap(domain, step)], "tool_calls": run["tool_calls"],
+                  **self._output_metadata(run)})
             fields: dict[str, Any] = {
                 "exec_ms": run["latency_ms"], "input_tokens": run["input_tokens"],
                 "output_tokens": run["output_tokens"], "cost_usd": round(cost, 8),
@@ -487,7 +498,7 @@ class Agent:
             # Only the tiers named by the quality setting are gated; other checks are measurement and cost nothing here.
             gate_active = model.tier in derived.gate_tiers
             judged = self._judge(shared["message"], step, run["text"], desk, domain, emit, "clef", index,
-                                 role="gate" if gate_active else "evaluation")
+                                 role="gate" if gate_active else "evaluation", output_error=run.get("output_error"))
             if judged["score"] is not None:
                 fields.update(judge_score=judged["score"], judge_cost_usd=round(judged["cost"], 8))
             if gate_active:
@@ -524,11 +535,11 @@ class Agent:
         self._finish_scores(step, view, totals)
         return view
 
-    # ---- lane: with Clef, applying the capability router and the selector
+    # ---- adaptive routing through the capability router and selector
 
     def _selector_decision(self, event: dict[str, Any] | None, selection: Any, settings: Settings, base_floor: float, attempt: int,
                            error: str | None) -> dict[str, Any]:
-        """The decision in the shape the screen already renders: what Clef saw, what was needed, every endpoint considered."""
+        """The decision in the screen's format: the router's assessment, requirements, and candidate endpoints."""
         fallback = selection is None
         if fallback:
             probabilities, route, confidence, router_ms = {}, "high", None, 0.0
@@ -546,8 +557,9 @@ class Agent:
             {"model_id": c.endpoint, "display": display_name(c.endpoint), "tier": endpoint_tier(self.shadow.endpoint(c.endpoint)),
              "status": c.status, "reasons": c.reasons, "quality": c.expected_success, "est_cost": c.est_cost_usd,
              "est_latency_ms": c.est_latency_ms, "utility": c.utility} for c in selection.candidates if self.shadow.endpoint(c.endpoint)]
-        reason = ("Clef did not answer" + (f" ({error})" if error else "") + ", so the strongest model was used.") if fallback else selection.reason
+        reason = ("The decision model did not answer" + (f" ({error})" if error else "") + ", so the strongest model was used.") if fallback else selection.reason
         return {"selected_model": chosen, "selected_tier": endpoint_tier(endpoint), "reason": reason, "candidates": candidates,
+                "needs_json": bool(event and event.get("needs_json")), "json_api": endpoint.json_api,
                 "requirement": {"total": round(sum(v for _, v in parts), 4), "parts": parts}, "router_ms": router_ms, "clef_ms": router_ms,
                 "clef": {"taxonomy_id": "capability-v1", "route": route, "probabilities": probabilities, "confidence": confidence,
                          "source": "fallback" if fallback else "clef", "error": error if fallback else None},
@@ -571,13 +583,28 @@ class Agent:
                                 base.latency_weight, base.confidence_threshold, base.high_tier_probability, base.uncertainty_margin)
             selection = self.shadow.reselect(event, item, settings, responses - excluded) if answered else None
             if answered and selection.choice is None:
+                if item.needs_json:
+                    problem = "No eligible endpoint has a verified transport for mandatory JSON output."
+                    emit({"type": "step_failed", "lane": "clef", "index": index, "error": problem})
+                    totals["failed"] += 1
+                    view.update(failed=True, output=problem, output_error=problem)
+                    return view
                 if attempt:  # nothing stronger is left to try: keep the last result
                     break
                 selection, error = None, "no endpoint is eligible"
             decision = self._selector_decision(event if answered else None, selection, settings, base.floor, attempt, error)
+            decision["needs_json"] = item.needs_json
             model = self.shadow.endpoint(decision["selected_model"])
+            if item.needs_json and model.json_api is None:
+                problem = "The fallback endpoint has no verified transport for mandatory JSON output."
+                emit({"type": "step_failed", "lane": "clef", "index": index, "error": problem})
+                totals["failed"] += 1
+                view.update(failed=True, output=problem, output_error=problem)
+                return view
             first = attempt == 0
-            router_cost = self.policy.router_cost_usd if answered and first else 0.0
+            router_cost = event.get("router_cost_usd", self.policy.router_cost_usd) if answered and first else 0.0
+            if answered and first:
+                totals["clef_tokens"] += (event.get("input_tokens") or 0) + (event.get("output_tokens") or 0)
             totals["router_cost"] += router_cost
             view["cost_usd"] += router_cost
             view["router_cost_usd"] += router_cost
@@ -608,7 +635,7 @@ class Agent:
             counted["steps"] += 1
             counted["cost_usd"] = round(counted["cost_usd"] + cost, 6)
             view.update(model=model.id, tier=tier, route=decision["clef"]["route"], confidence=decision["clef"]["confidence"],
-                        attempts=attempt + 1, output=result["text"])
+                        attempts=attempt + 1, output=result["text"], output_error=result.get("output_error"))
             view["cost_usd"] += cost
             view["tokens"] += result["input_tokens"] + result["output_tokens"]
             view["exec_tokens"] += result["input_tokens"] + result["output_tokens"]
@@ -618,11 +645,12 @@ class Agent:
             emit({"type": "exec", "lane": "clef", "index": index, "attempt": attempt, "model": model.id, "tier": tier, "style": style,
                   "latency_ms": result["latency_ms"], "router_ms": decision["router_ms"], "input_tokens": result["input_tokens"],
                   "output_tokens": result["output_tokens"], "cost_usd": round(cost, 6),
-                  "output": result["text"][:self._cap(domain, step)], "tool_calls": result["tool_calls"]})
+                  "output": result["text"][:self._cap(domain, step)], "tool_calls": result["tool_calls"],
+                  **self._output_metadata(result)})
             gate_active = tier in derived.gate_tiers
             judge_routing = self._judge_choice(event, derived) if self.route_judge and answered else None
             judged = self._judge(message, step, result["text"], desk, domain, emit, "clef", index, role="gate" if gate_active else "evaluation",
-                                 routing=judge_routing)
+                                 routing=judge_routing, output_error=result.get("output_error"))
             if gate_active:
                 totals["check_cost"] += judged["cost"]
                 totals["check_tokens"] += judged["tokens"]
@@ -654,7 +682,7 @@ class Agent:
         self._finish_scores(step, view, totals)
         return view
 
-    # ---- lane: without Clef
+    # ---- always strongest
 
     def _baseline_step(self, index: int, step: dict[str, Any], shared: dict[str, Any], desk: Any,
                        totals: dict[str, Any], summaries: list[str], emit: Emit) -> dict[str, Any]:
@@ -682,13 +710,14 @@ class Agent:
         view.update(cost_usd=cost, tokens=run["input_tokens"] + run["output_tokens"], tokens_in=run["input_tokens"],
                     tokens_out=run["output_tokens"],
                     exec_tokens=run["input_tokens"] + run["output_tokens"], latency_ms=run["latency_ms"],
-                    output=run["text"])
+                    output=run["text"], output_error=run.get("output_error"))
         emit({"type": "exec", "lane": "baseline", "index": index, "attempt": 0, "model": model.id,
               "tier": model.tier, "style": style, "latency_ms": run["latency_ms"], "router_ms": 0.0,
               "input_tokens": run["input_tokens"], "output_tokens": run["output_tokens"],
-              "cost_usd": round(cost, 6), "output": run["text"][:self._cap(shared["domain"], step)], "tool_calls": run["tool_calls"]})
+              "cost_usd": round(cost, 6), "output": run["text"][:self._cap(shared["domain"], step)], "tool_calls": run["tool_calls"],
+              **self._output_metadata(run)})
         judged = self._judge(shared["message"], step, run["text"], desk, shared["domain"], emit, "baseline", index,
-                             role="evaluation")
+                             role="evaluation", output_error=run.get("output_error"))
         totals["eval_cost"] += judged["cost"]
         view["score"] = judged["score"]
         self._finish_scores(step, view, totals)
@@ -696,6 +725,9 @@ class Agent:
 
     @staticmethod
     def _finish_scores(step: dict[str, Any], view: dict[str, Any], totals: dict[str, Any]) -> None:
+        if view.get("output_error") and not view["failed"]:
+            view["failed"] = True
+            totals["failed"] += 1
         if view["score"] is not None:
             totals["scores"].append(view["score"])
             if step["reply"]:
@@ -710,6 +742,8 @@ class Agent:
                 f"Your step:\n{step['instruction']}")
         system = {"reply": domain.reply_system, "clarify": domain.clarify_system, "general": domain.general_system,
                   "tools": domain.tools_system}[style]
+        if style == "reply" and domain.reply_json:
+            return self._json_reply(model.deployment, system, user, domain)
         if style != "tools":
             result = self.llm.complete(model.deployment, system=system, user=user, max_output_tokens=limit,
                                        json_object=style == "reply" and domain.reply_json)
@@ -737,27 +771,87 @@ class Agent:
         return self._pack(result, latency, total_in, total_out, calls)
 
     @staticmethod
-    def _cap(domain: Domain, step: dict[str, Any]) -> int:
-        """How much of a step's output is sent to the screen: a full itinerary is much longer than a tool summary."""
-        return 24000 if step["reply"] and domain.reply_json else 5000
+    def _cap(domain: Domain, step: dict[str, Any]) -> int | None:
+        """Never cut a JSON document between generation, validation, and display."""
+        return None if step["reply"] and domain.reply_json else 5000
+
+    def _json_reply(self, deployment: str, system: str, user: str, domain: Domain) -> dict[str, Any]:
+        result: LLMResult | None = None
+        total_in = total_out = 0
+        latency = 0.0
+        attempts: list[dict[str, Any]] = []
+        problem: str | None = None
+        for attempt, limit in enumerate((domain.reply_tokens, domain.reply_tokens * 2)):
+            prompt = system
+            if attempt:
+                prompt += (
+                    "\n\nThe previous response was not a complete, usable JSON object. Regenerate the entire object "
+                    "from the same supplied facts, not a continuation. Return only JSON, with no Markdown fences or "
+                    "commentary. Keep descriptions concise so all days and remaining fields fit. Do not invent facts "
+                    "or remove days to fit the output budget."
+                )
+            try:
+                response = self.llm.complete(deployment, system=prompt, user=user, json_object=True,
+                                             max_output_tokens=limit)
+            except LLMError as error:
+                if result is None:
+                    raise
+                problem = f"JSON regeneration failed: {str(error)[:200]}"
+                attempts.append({"attempt": attempt, "max_output_tokens": limit, "error": problem})
+                break
+            result = response
+            total_in += result.input_tokens
+            total_out += result.output_tokens
+            latency += result.latency_ms
+            if result.refusal:
+                problem = "The model refused to generate the itinerary."
+            elif result.status != "completed":
+                reason = f" ({result.incomplete_reason})" if result.incomplete_reason else ""
+                problem = f"The model output did not complete: {result.status or 'unknown status'}{reason}."
+            elif domain.validate_reply is not None:
+                problem = domain.validate_reply(result.text)
+            else:
+                try:
+                    parsed = json.loads(result.text)
+                    problem = None if isinstance(parsed, dict) else "The response was not a JSON object."
+                except json.JSONDecodeError:
+                    problem = "The response was not valid JSON."
+            attempts.append({"attempt": attempt, "max_output_tokens": limit, "status": result.status,
+                             "incomplete_reason": result.incomplete_reason, "input_tokens": result.input_tokens,
+                             "output_tokens": result.output_tokens, "latency_ms": result.latency_ms, "error": problem,
+                             "response_id": result.response_id, **({"output": result.text} if problem else {})})
+            if (problem is None or result.refusal or result.incomplete_reason == "content_filter"
+                    or result.status not in ("completed", "incomplete")):
+                break
+        assert result is not None
+        return {**self._pack(result, latency, total_in, total_out, []),
+                "output_error": problem, "json_attempts": attempts}
+
+    @staticmethod
+    def _output_metadata(run: dict[str, Any]) -> dict[str, Any]:
+        return {key: run[key] for key in ("status", "incomplete_reason", "output_error", "json_attempts") if key in run}
 
     @staticmethod
     def _pack(result: LLMResult, latency: float, tokens_in: int, tokens_out: int,
               calls: list[dict[str, Any]]) -> dict[str, Any]:
         return {"text": result.text, "input_tokens": tokens_in, "output_tokens": tokens_out,
-                "latency_ms": round(latency, 1), "tool_calls": calls}
+                "latency_ms": round(latency, 1), "tool_calls": calls,
+                "status": result.status, "incomplete_reason": result.incomplete_reason}
 
     def _judge(self, message: str, step: dict[str, Any], output: str, desk: Any, domain: Domain, emit: Emit,
-               lane: str, index: int, *, role: str, routing: dict[str, Any] | None = None) -> dict[str, Any]:
+               lane: str, index: int, *, role: str, routing: dict[str, Any] | None = None,
+               output_error: str | None = None) -> dict[str, Any]:
         judge = self._price(self.policy.judge_model)
-        if step["reply"] and domain.validate_reply is not None:
-            problem = domain.validate_reply(output)
+        if step["reply"] and (domain.validate_reply is not None or output_error):
+            problem = output_error
+            if problem is None and domain.validate_reply is not None:
+                problem = domain.validate_reply(output)
             if problem:  # a structural failure needs no reviewer
                 emit({"type": "judge", "lane": lane, "index": index, "role": role, "score": 1, "reason": problem,
                       "fault": "this_output", "model": "structure check", "cost_usd": 0.0, "latency_ms": 0.0})
                 return {"score": 1, "cost": 0.0, "tokens": 0, "latency_ms": 0.0, "fault": "this_output"}
         cap = domain.evidence_chars
-        shown = 12000 if step["reply"] and domain.reply_json else 3000
+        shown = None if step["reply"] and domain.reply_json else 3000
         evidence = json.dumps([{"tool": c["name"], "args": c["arguments"], "result": c["result"]}
                                for c in desk.calls], default=str)[-cap:]
         user = (f"REQUEST:\n{message[:1500]}\n\nSTEP:\n{step['instruction'][:1200]}"
@@ -856,9 +950,11 @@ class Agent:
             result = self._execute(SimpleNamespace(deployment=endpoint.deployment), style, step, message, summaries, desk, domain, limit)
         except LLMError as error:
             return {**row, "status": "failed", "reason": f"The endpoint failed: {str(error)[:100]}"}
-        judged = self._judge(message, step, result["text"], desk, domain, lambda event: None, "replay", index, role="evaluation")
+        judged = self._judge(message, step, result["text"], desk, domain, lambda event: None, "replay", index, role="evaluation",
+                             output_error=result.get("output_error"))
         cost = self.shadow.price(decision["choice"], result["input_tokens"], result["output_tokens"]) if self.shadow else None
-        return {**row, "status": "ok", "tokens_in": result["input_tokens"], "tokens_out": result["output_tokens"],
+        return {**row, "status": "failed" if result.get("output_error") else "ok", "reason": result.get("output_error") or "",
+                "tokens_in": result["input_tokens"], "tokens_out": result["output_tokens"],
                 "cost_usd": cost or 0.0, "judge_cost_usd": judged["cost"], "score": judged["score"],
                 "latency_ms": result["latency_ms"], "output": result["text"]}
 
@@ -904,6 +1000,7 @@ class Agent:
                  else round(clef["reply_score"] - base["reply_score"], 2))
         summary = {
             "task_id": task_id, "agent": domain.id, "preferences": prefs.to_dict(),
+            "lane_labels": LANE_LABELS.copy(),
             "tool_usage": self._tool_usage(world), "elapsed_s": round(time.perf_counter() - started, 2),
             "lanes": views, "planner_cost_usd": round(plan_cost, 6),
             "saved": {"cost": _saved(base["cost_usd"], clef["cost_usd"]),
@@ -911,7 +1008,10 @@ class Agent:
                       "latency": _saved(base["latency_ms"], clef["latency_ms"])},
             "reply_score_delta": reply,
             "checks_passed": {lane: [sum(c["passed"] for c in rows), len(rows)] for lane, rows in checks.items()},
-            "router_cost_note": self.policy.data.get("router_cost_note", ""),
+            "router_provider": self.shadow.versions["provider"] if self.apply_selector else "clef",
+            "router_name": self.shadow.versions["display_name"] if self.apply_selector else "Clef",
+            "router_cost_note": (getattr(self.shadow.router, "cost_note", self.policy.data.get("router_cost_note", ""))
+                                 if self.apply_selector else self.policy.data.get("router_cost_note", "")),
         }
         self.telemetry.log_run(summary)
         emit({"type": "run_done", **summary})

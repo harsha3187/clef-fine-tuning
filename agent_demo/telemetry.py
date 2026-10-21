@@ -12,6 +12,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from agent_demo.labels import LANE_LABELS
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS decisions (
@@ -66,7 +67,7 @@ class Telemetry:
                 "INSERT OR REPLACE INTO runs (task_id, created_utc, quality, latency, cost, summary) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (summary["task_id"], datetime.now(timezone.utc).isoformat(), prefs["quality"], prefs["latency"],
-                 prefs["cost"], json.dumps(summary)))
+                 prefs["cost"], json.dumps({**summary, "lane_labels": LANE_LABELS.copy()})))
             self._conn.commit()
 
     def run_aggregates(self, limit: int = 12, agent: str | None = None) -> dict[str, Any]:
@@ -98,6 +99,7 @@ class Telemetry:
                 slot["cost_usd"] = round(slot["cost_usd"] + entry["cost_usd"], 6)
         return {
             "runs": len(runs),
+            "lane_labels": LANE_LABELS.copy(),
             "cost_usd": {"clef": round(total("clef", "cost_usd"), 6), "baseline": round(total("baseline", "cost_usd"), 6),
                          "saved_pct": pct(total("baseline", "cost_usd"), total("clef", "cost_usd"))},
             "tokens": {"clef": int(total("clef", "tokens_total")), "baseline": int(total("baseline", "tokens_total")),

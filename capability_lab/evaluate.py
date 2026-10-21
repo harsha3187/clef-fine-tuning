@@ -26,7 +26,7 @@ from capability_lab.analysis import TIERS, pass_matrix
 from capability_lab.tasks import Task
 from routing_lab.selector import Constraints, Endpoint, Settings, select
 
-ROUTER_COST_USD = 0.0004  # estimated GPU time per Clef decision at full utilization; see docs/agent-demo.md
+ROUTER_COST_USD = 0.0004  # estimated GPU time per Clef decision at full utilization; see docs/router.md
 MIN_CELL = 4
 
 

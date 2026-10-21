@@ -1,4 +1,4 @@
-﻿"""Capability routing with Clef: how much model capability a request needs, and what kind of work it is.
+"""Capability routing with Clef: how much model capability a request needs, and what kind of work it is.
 
 One call returns two answers from a single forward pass: a probability for each capability tier (low, medium,
 high) and for each skill (coding, reasoning, tools, writing, extraction). The router never sees tools or picks a
@@ -41,6 +41,8 @@ class CapabilityResult:
     deployment: str | None = None
     context_dropped_tokens: int = 0
     extras: dict[str, object] = field(default_factory=dict)
+    output_tokens: int | None = None
+    cost_usd: float | None = None
 
     @property
     def tier(self) -> str:
@@ -63,7 +65,8 @@ class CapabilityResult:
         return {"tier": self.tier, "tier_probabilities": self.tier_probabilities, "skill": self.skill,
                 "skill_probabilities": self.skill_probabilities, "confidence": round(self.confidence, 4),
                 "expected_tier": round(self.expected_tier, 4), "latency_ms": self.latency_ms,
-                "input_tokens": self.input_tokens, "deployment": self.deployment}
+                "input_tokens": self.input_tokens, "output_tokens": self.output_tokens,
+                "cost_usd": self.cost_usd, "deployment": self.deployment}
 
 
 def capability_state(request: str, context: str = "") -> str:
@@ -80,6 +83,8 @@ class CapabilityRouter:
     """Client for the capability catalog on a Clef endpoint deployment."""
 
     RETRIES = 6
+    provider = "clef"
+    display_name = "Clef"
 
     def __init__(self, url: str, deployment: str | None = None, *, backend: ClefEndpointBackend | None = None,
                  adapter_sha256: str | None = None, timeout: tuple[float, float] = (5, 30), local: bool = False) -> None:
@@ -88,6 +93,10 @@ class CapabilityRouter:
             adapter_sha256=adapter_sha256, skills=True, timeout=timeout, local=local, max_gateway_retries=2,
             gateway_retry_backoff_seconds=0.5)
         self.deployment = deployment
+
+    def request_payload(self, request: str, context: str = "") -> dict[str, object]:
+        """Build the same native body used by classify without calling the endpoint."""
+        return self.backend.request_payload(capability_state(request, context))
 
     def classify(self, request: str, context: str = "") -> CapabilityResult:
         state = capability_state(request, context)
@@ -116,7 +125,8 @@ class CapabilityRouter:
         return CapabilityResult(
             {k: round(v, 5) for k, v in decision.probabilities.items()},
             {k: round(v, 5) for k, v in decision.skill_probabilities.items()},
-            round(latency_ms, 1), decision.input_tokens, self.deployment, decision.state_tokens_dropped or 0)
+            round(latency_ms, 1), decision.input_tokens, self.deployment, decision.state_tokens_dropped or 0,
+            output_tokens=decision.output_tokens)
 
 
 def main() -> int:
