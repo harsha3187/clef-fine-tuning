@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 /* ---------------------------------------------------------------- helpers */
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -59,6 +59,14 @@ const PREF_COPY = {
   latency: ["Latency", "How quickly do you need a response? Low means as fast as possible."],
   cost: ["Cost", "How much token spend is acceptable? Low keeps spend as low as possible."],
 };
+const DEFAULT_LANE_LABELS = { clef: "Adaptive routing", baseline: "Always strongest" };
+const laneLabel = (lane) => ((app.info && app.info.lane_labels) || DEFAULT_LANE_LABELS)[lane];
+const DEFAULT_UI_COPY = {
+  decision_model: "Decision model",
+  decision_prompt: "Exact decision-model prompt",
+  routing_cost_notice: "Routing costs are estimates based on the configured billing model, not invoices. Retained hosted endpoints can incur separate compute charges.",
+};
+const uiCopy = (key) => ((app.info && app.info.ui_copy) || DEFAULT_UI_COPY)[key];
 
 /* ------------------------------------------------------------------ state */
 const app = {
@@ -80,20 +88,35 @@ const modelChip = (id) => {
 };
 
 /* ------------------------------------------------------------------ status */
+function routerDetails(run = null) {
+  const shadow = run ? run.shadow || {} : app.info.shadow || {};
+  const versions = run ? (shadow.started && shadow.started.versions) || {} : shadow.versions || {};
+  const model = run
+    ? (run.started && run.started.router_name) || (run.summary && run.summary.router_name) || versions.display_name
+    : versions.display_name;
+  const fields = [["Model", model], ["Deployment", versions.router], ["Prompt version", versions.prompt]];
+  if (versions.adapter_sha256) fields.push(["Adapter fingerprint", versions.adapter_sha256]);
+  const costNote = run ? run.summary && run.summary.router_cost_note : app.info.router_cost_note;
+  if (costNote) fields.push(["Recorded billing basis", costNote]);
+  return h("dl", { class: "kv" }, fields.flatMap(([label, value]) => [
+    h("dt", { text: label }), h("dd", { "data-model-value": true, text: value || "Not recorded" }),
+  ]));
+}
+
 function renderStatus() {
   const info = app.info, root = $("#status");
   clearEl(root);
-  const shadow = info.shadow || {}, v = shadow.versions || {}, last = shadow.last;
+  const shadow = info.shadow || {}, last = shadow.last;
   if (shadow.enabled) {
-    root.append(h("span", { class: "chip", title: `Capability router: Clef deployment ${v.router}, adapter ${v.adapter_sha256}, prompt ${v.prompt}` },
+    root.append(h("span", { class: "chip", title: "Decision-model connection status and routing latency. Model and deployment details are available in Models." },
       h("span", { class: `dot ${last ? (last.ok ? "ok" : "bad") : ""}` }),
-      `Capability router${last ? (last.ok ? ` · ${secs(last.latency_ms)}` : " · not answering") : " · warming up"}`));
+      `${uiCopy("decision_model")}${last ? (last.ok ? ` · ${secs(last.latency_ms)}` : " · not answering") : " · warming up"}`));
   } else {
     root.append(h("span", { class: "chip", title: "Started with the shadow selector turned off" }, h("span", { class: "dot" }), "Capability router off"));
   }
   const legacy = info.clef.last;
-  if (legacy && !legacy.ok && !shadow.applied) {  // the step-type router the With-Clef lane uses; it falls back to the strongest model when it is down
-    root.append(h("span", { class: "chip", title: `The step-type router (${info.clef.deployment}) did not answer, so the With Clef lane sends steps to the strongest model` },
+  if (legacy && !legacy.ok && !shadow.applied) {
+    root.append(h("span", { class: "chip", title: `The legacy decision model did not answer, so ${laneLabel("clef")} uses the strongest model` },
       h("span", { class: "dot bad" }), "Step router down"));
   }
   $("#registry-version").textContent = `registry ${info.registry_version}`;
@@ -237,12 +260,12 @@ const AGENT_COPY = {
   support: {
     title: "Support desk", run: "Run both ways", running: "Running both ways…", quality: "Reply quality",
     replyTitle: "What the customer receives", actions: "Store changes",
-    lede: "Run a customer message two ways on the same plan: routed by Clef, and sent to the strongest model every time. Compare cost, tokens, speed and quality.",
+    lede: "Run a customer message two ways on the same plan: adaptive routing, and the strongest model every time. Compare cost, tokens, speed and quality.",
   },
   travel: {
     title: "Travel planner", run: "Plan both ways", running: "Planning both ways…", quality: "Itinerary quality",
     replyTitle: "The itinerary", actions: "Holds placed (simulated)",
-    lede: "Plan a trip two ways from one shared plan: specialist sub-agents routed by Clef, and the same work on the strongest model every time. Web search, guides and weather are real; flight fares, hotel rates and holds are simulated.",
+    lede: "Plan a trip two ways from one shared plan: adaptive routing across specialist sub-agents, and the same work on the strongest model every time. Web search, guides and weather are real; flight fares, hotel rates and holds are simulated.",
   },
 };
 const agentInfo = () => app.info.agents[app.agent];
@@ -280,9 +303,15 @@ function buildCases() {
 function selectCase(id) {
   const c = agentInfo().scenarios.find((x) => x.id === id);
   if (!c) return;
+  if (app.run && !app.run.done && !app.run.error) {
+    buildCases();
+    return;
+  }
   app.caseId = id;
+  app.run = null;
   if (app.agent === "support") $("#message").value = c.message; else fillTravelForm(c.form);
   updateComposer();
+  renderResults();
 }
 
 const normForm = (f) => JSON.stringify({ o: f.origin.trim(), d: f.destination.trim(), s: f.start_date, e: f.end_date, t: Number(f.travelers), b: f.budget, i: [...f.interests].sort(), n: (f.notes || "").trim() });
@@ -408,6 +437,7 @@ async function startRun() {
 function setRunning(on) {
   const button = $("#run"), copy = AGENT_COPY[app.agent];
   button.disabled = on;
+  for (const input of document.querySelectorAll("#cases input")) input.disabled = on;
   clearEl(button);
   if (on) button.append(h("span", { class: "spinner", "aria-hidden": "true" }), copy.running); else button.append(copy.run);
 }
@@ -454,13 +484,19 @@ function handleEvent(run, e) {
     case "lane_started": lane.status = "running"; break;
     case "step_started": laneStep(run, e.lane, e.index); break;
     case "decision": laneStep(run, e.lane, e.index).decisions.push(e); break;
-    case "exec": laneStep(run, e.lane, e.index).execs.push(e); break;
+    case "exec": {
+      const step = laneStep(run, e.lane, e.index);
+      step.execs.push(e);
+      if (e.json_attempts && e.json_attempts.length > 1) step.notes.push({ kind: "info",
+        text: "The JSON response was regenerated once on the same model. Both calls are included in the cost, tokens and time." });
+      break;
+    }
     case "judge": laneStep(run, e.lane, e.index).judges.push(e); break;
     case "escalation": laneStep(run, e.lane, e.index).notes.push({ kind: "warn", text: `Escalated from ${(modelOf(e.from_model) || { display: e.from_model }).display}. ${e.reason}` }); break;
     case "note": laneStep(run, e.lane, e.index).notes.push({ kind: "info", text: e.text }); break;
     case "exec_error": laneStep(run, e.lane, e.index).notes.push({ kind: "bad", text: `A model call failed (${(modelOf(e.model) || { display: e.model }).display}).` }); break;
     case "step_failed": { const s = laneStep(run, e.lane, e.index); s.status = "failed"; s.notes.push({ kind: "bad", text: "This step could not be completed." }); break; }
-    case "step_done": { const s = laneStep(run, e.lane, e.index); s.status = s.status === "failed" ? "failed" : "done"; s.view = e.step; lane.totals = e.totals; break; }
+    case "step_done": { const s = laneStep(run, e.lane, e.index); s.status = s.status === "failed" || e.step.failed ? "failed" : "done"; s.view = e.step; lane.totals = e.totals; break; }
     case "step_compare": run.compare[e.index] = e; break;
     case "lane_totals": lane.totals = e.totals; break;
     case "lane_done": lane.status = lane.error ? "error" : "done"; lane.totals = e.totals; break;
@@ -481,7 +517,7 @@ function handleEvent(run, e) {
 const endpointName = (id) => (modelOf(id) || { display: id }).display;
 
 function tierBars(d) {
-  return h("div", { class: "bars tier-bars", title: "Clef's probability for how much capability the request needs" },
+  return h("div", { class: "bars tier-bars", title: "The router's probability for how much capability the request needs" },
     ["low", "medium", "high"].map((tier) => h("div", { class: "bar-row" },
       h("span", { class: "name", text: tier }), h("div", { class: "track" }, h("div", { class: "fill", vars: { "--w": `${Math.round((d.tier_probabilities[tier] || 0) * 100)}%` } })),
       h("span", { class: "val", text: fraction(d.tier_probabilities[tier]) }))));
@@ -502,8 +538,8 @@ function shadowRow(run, key, rowSummary) {
   const d = run.shadow.decisions[key];
   const title = key === "plan" ? "Plan the case" : ((run.plan && run.plan[Number(key) - 1]) || { title: `Step ${key}` }).title;
   const head = h("td", {}, h("div", { class: "step-title", text: title }), h("div", { class: "hint", text: key === "plan" ? "planner" : (run.plan && run.plan[Number(key) - 1] && run.plan[Number(key) - 1].reply ? "final answer" : "tool step") }));
-  if (!d) return h("tr", {}, head, h("td", { colSpan: 5 }, h("span", { class: "pending" }, h("span", { class: "spinner" }), "Asking Clef…")));
-  if (d.type === "shadow_error") return h("tr", {}, head, h("td", { colSpan: 5 }, h("span", { class: "muted", text: "Clef did not answer, so the selector was skipped for this call. The run itself was not affected." })));
+  if (!d) return h("tr", {}, head, h("td", { colSpan: 5 }, h("span", { class: "pending" }, h("span", { class: "spinner" }), "Consulting the decision model…")));
+  if (d.type === "shadow_error") return h("tr", {}, head, h("td", { colSpan: 5 }, h("span", { class: "muted", text: "The decision model did not answer, so the shadow selector was skipped for this call. The run itself was not affected." })));
   const ran = rowSummary && rowSummary.actual;
   const ev = d.evidence, thin = !!ev && ev.pooled_share + ev.missing_share >= 0.5;
   const flags = [d.uncertain ? h("span", { class: "chip warn", title: d.uncertainty_reasons.join("; "), text: "unsure" }) : null,
@@ -518,10 +554,10 @@ function shadowRow(run, key, rowSummary) {
         h("td", { class: c.status === "selected" ? "good" : "muted", text: c.status === "selected" ? "Chosen" : c.status === "below_floor" ? "Below floor" : "Eligible" }))))),
     d.eliminated.length ? h("p", { class: "hint", text: "Ruled out: " + d.eliminated.map((c) => `${endpointName(c.endpoint)} (${c.reasons[0]})`).join(", ") + "." }) : null,
     ev ? h("p", { class: "hint", text: `Evidence for the choice: ${fraction(ev.exact_share)} from benchmark tasks of exactly this kind of work and difficulty, ${fraction(ev.pooled_share)} pooled across kinds of work${ev.missing_share ? `, ${fraction(ev.missing_share)} unmeasured` : ""}.` }) : null,
-    h("p", { class: "hint", text: `Floor ${fraction(d.floor)}${d.effective_floor !== d.floor ? `, raised to ${fraction(d.effective_floor)} because Clef was unsure` : ""}. Clef answered in ${secs(d.router_ms)}. * price not yet verified.` }));
+    h("p", { class: "hint", text: `Floor ${fraction(d.floor)}${d.effective_floor !== d.floor ? `, raised to ${fraction(d.effective_floor)} because the decision model was unsure` : ""}. Routing took ${secs(d.router_ms)}. * price not yet verified.` }));
   return h("tr", {},
     head,
-    h("td", {}, tierBars(d), h("div", { class: "hint", text: d.skill_used === false ? `Kind of work: taken from the step (${d.skill_hint ? Object.keys(d.skill_hint)[0] : "none"}); this router has no skill training` : `Kind of work: ${d.skill} (${fraction(d.skill_probabilities[d.skill])})` })),
+    h("td", {}, tierBars(d), h("div", { class: "hint", text: d.skill_used === false ? `Kind of work: taken from the step (${d.skill_hint ? Object.keys(d.skill_hint)[0] : "none"}); predicted skill is disabled` : `Kind of work: ${d.skill} (${fraction(d.skill_probabilities[d.skill])})` })),
     h("td", {}, h("div", {}, h("b", { text: endpointName(d.choice) }), " ", flags.filter(Boolean).flatMap((f) => [f, " "])), h("div", { class: "hint", text: `expected success ${fraction(d.expected_success)}${d.baseline.expected_success !== null ? ` · ${endpointName(d.baseline.endpoint)} ${fraction(d.baseline.expected_success)}` : ""}` }), more),
     h("td", { class: "r" }, ran ? h("div", {}, h("div", { class: "tnum", text: usd(ran.cost_usd) }), h("div", { class: "hint", text: endpointName(ran.model) })) : h("span", { class: "skel" })),
     h("td", {}, replayCell(run, key, rowSummary)),
@@ -535,10 +571,10 @@ function renderShadow(run) {
   if (s) for (const row of s.rows) byKey[row.key] = row;
   const saved = s && s.saved_vs_baseline;
   const strip = s && s.decisions ? h("div", { class: "saved-strip" },
-    h("span", {}, h("span", { class: "lbl", text: "Always strongest " }), usd(s.priced_baseline_cost_usd)),
+    h("span", {}, h("span", { class: "lbl", text: `${laneLabel("baseline")} ` }), usd(s.priced_baseline_cost_usd)),
     h("span", {}, h("span", { class: "lbl", text: "Selector would cost " }), usd(s.selector_est_cost_usd), saved && saved.pct !== null ? h("span", { class: `delta ${saved.value >= 0 ? "good" : "bad"}`, text: ` (${Math.abs(saved.pct).toFixed(0)}% ${saved.value >= 0 ? "less" : "more"})` }) : null),
-    h("span", {}, h("span", { class: "lbl", text: "Clef lane actually cost " }), usd(s.clef_lane_cost_usd)),
-    h("span", { class: "run", text: s.mean_expected_success !== null ? `Mean expected success ${fraction(s.mean_expected_success)} · same choice as the Clef lane on ${s.same_choice_as_clef_lane} of ${s.decisions}` : "" })) : null;
+    h("span", {}, h("span", { class: "lbl", text: `${laneLabel("clef")} actually cost ` }), usd(s.clef_lane_cost_usd)),
+    h("span", { class: "run", text: s.mean_expected_success !== null ? `Mean expected success ${fraction(s.mean_expected_success)} · same choice as ${laneLabel("clef")} on ${s.same_choice_as_clef_lane} of ${s.decisions}` : "" })) : null;
   const rp = s && s.replay;
   const checks = rp && rp.checks && rp.checks.replay ? `${rp.checks.replay[0]} / ${rp.checks.replay[1]}` : null;
   const baseChecks = rp && rp.checks && rp.checks.baseline ? `${rp.checks.baseline[0]} / ${rp.checks.baseline[1]}` : null;
@@ -549,12 +585,12 @@ function renderShadow(run) {
   return h("section", { "aria-labelledby": "shadow-title" },
     h("div", { class: "section-title" }, h("h2", { id: "shadow-title", text: "Shadow selector" }),
       h("span", { class: "hint", text: s ? "Not applied: nothing above used these choices" : "Deciding beside the run…" })),
-    h("p", { class: "hint", text: "Clef reads each request and says how much capability it needs. A selector then picks the best fit for your cost and speed settings among the endpoints, out of ten measured on a benchmark, that meet your quality bar. It runs beside the lanes and changes nothing." }),
+    h("p", { class: "hint", text: "The decision model estimates how much capability each request needs. A selector then picks the best fit for your cost and speed settings among measured endpoints that meet your quality bar. In shadow mode it observes the two approaches without changing their choices." }),
     strip, replayStrip,
     h("div", { class: "table-wrap" }, h("table", { class: "shadow-table" },
-      h("thead", {}, h("tr", {}, h("th", { text: "Call" }), h("th", { text: "Clef says" }), h("th", { text: "Selector would pick" }), h("th", { class: "r", text: "Always strongest ran" }), h("th", { text: "Replayed on its choice" }), h("th", { class: "r", text: "Selector est. cost" }))),
+      h("thead", {}, h("tr", {}, h("th", { text: "Call" }), h("th", { text: "Decision-model assessment" }), h("th", { text: "Selector would pick" }), h("th", { class: "r", text: `${laneLabel("baseline")} ran` }), h("th", { text: "Replayed on its choice" }), h("th", { class: "r", text: "Selector est. cost" }))),
       h("tbody", {}, keys.map((key) => shadowRow(run, key, byKey[key]))))),
-    s ? h("p", { class: "hint", text: `${s.note} Each selector cost includes ${usd(s.rows.length ? s.rows[0].router_cost_usd : 0)} for the Clef call.${s.errors ? ` Clef did not answer for ${s.errors} call${s.errors === 1 ? "" : "s"}.` : ""} Registry ${s.versions.registry}.` }) : null);
+    s ? h("p", { class: "hint", text: `${s.note} Selector estimates include each decision-model call's routing cost.${s.errors ? ` The decision model did not answer for ${s.errors} call${s.errors === 1 ? "" : "s"}.` : ""} Registry ${s.versions.registry}.` }) : null);
 }
 
 /* ---- results rendering */function renderResults() {
@@ -576,7 +612,7 @@ function renderShadow(run) {
   for (const lane of ["clef", "baseline"]) {
     if (run.lanes[lane].error) {
       root.append(h("div", { class: "alert warn", role: "alert" }, h("div", { class: "grow" },
-        h("b", { text: `The ${lane === "clef" ? "with Clef" : "without Clef"} lane stopped early.` }),
+        h("b", { text: `${laneLabel(lane)} stopped early.` }),
         h("div", { class: "hint", text: "The other lane's results are shown. Differences below only cover steps both lanes completed." }))));
     }
   }
@@ -584,7 +620,7 @@ function renderShadow(run) {
   if (run.shadow.on && !(run.shadow.started && run.shadow.started.applied)) root.append(renderShadow(run));
   if (run.summary) {
     const use = run.summary.tool_usage || {};
-    const search = use.web_searches ? ` Web search was shared by both lanes and is not compared: ${use.web_searches} searches, about ${usd(use.search_cost_usd)} in model tokens, before any per-search fee Azure may add.` : "";
+    const search = use.web_searches ? ` Web search was shared by both lanes and is not compared: ${use.web_searches} searches, about ${usd(use.search_cost_usd)} in model tokens, before any provider search fees.` : "";
     root.append(h("p", { class: "hint", text: `Finished in ${run.summary.elapsed_s} s. Planning cost ${usd(run.summary.planner_cost_usd)} and is shared by both lanes, so it is left out of the comparison.${search}` }));
   }
 }
@@ -595,22 +631,29 @@ function renderPlanning(run) {
   const r = e.routing, fixed = (modelOf(e.fixed_model) || { display: e.fixed_model }).display;
   const used = (modelOf(e.planner_model) || { display: e.planner_model }).display;
   const top = r.probabilities ? Object.entries(r.probabilities).sort((a, b) => b[1] - a[1])[0] : null;
-  const saved = e.fixed_cost_usd ? ` The same tokens on ${fixed} would have cost ${usd(e.fixed_cost_usd)}.` : "";
+  const saved = e.fixed_cost_usd ? ` The same tokens on the fallback planner would have cost ${usd(e.fixed_cost_usd)}.` : "";
   const text = r.source === "clef"
-    ? `Planned by ${used}. Clef read the planning task as ${ROUTE_LABEL[top[0]] || top[0]} (${fraction(top[1])}); ${r.reason} Cost ${usd(e.cost_usd)} including Clef.${saved}`
-    : `Clef did not answer (${r.error || "timeout"}), so ${fixed} planned it. Cost ${usd(e.cost_usd)}.`;
-  return h("p", { class: "hint", text: `${text} Both lanes run this one plan.${e.note ? ` ${e.note}` : ""}` });
+    ? `The planning task was assessed as ${ROUTE_LABEL[top[0]] || top[0]} (${fraction(top[1])}); ${r.reason} Cost ${usd(e.cost_usd)} including routing.${saved}`
+    : `The decision model was unavailable, so the configured fallback planner was used. Cost ${usd(e.cost_usd)}.`;
+  return h("div", {},
+    h("dl", { class: "kv" },
+      h("dt", { text: "Planner model" }), h("dd", { "data-model-value": true, text: used }),
+      h("dt", { text: "Fallback planner" }), h("dd", { "data-model-value": true, text: fixed }),
+      r.error ? h("dt", { text: "Routing error" }) : null,
+      r.error ? h("dd", { "data-record-value": true, text: r.error }) : null),
+    h("p", { class: "hint", text: `${text} Both lanes run this one plan.${e.note ? ` ${e.note}` : ""}` }),
+    routerPrompt(r.router_request, run));
 }
 
 function emptyDesk() {
   const travel = app.agent === "travel";
   return h("div", { class: "empty" },
     h("h2", { text: travel ? "Describe a trip and plan it" : "Pick a customer message and run it" }),
-    h("p", { class: "muted", text: travel ? "Give dates, and a destination if you have one. Without one, the agent picks a place using the weather for your dates." : "Every case is handled twice from one shared plan, so you can see what Clef changes." }),
+    h("p", { class: "muted", text: travel ? "Give dates, and a destination if you have one. Without one, the agent picks a place using the weather for your dates." : "Every case is handled twice from one shared plan, so you can see what routing changes." }),
     h("ol", {},
       h("li", { text: travel ? "The agent plans the trip, with specialist sub-agents for flights, hotels, sights, food and weather that work in parallel." : "The agent plans the case into steps and tool calls." }),
-      h("li", { text: "With Clef: each step is classified, then your preferences pick the model." }),
-      h("li", { text: "Without Clef: every step goes to the strongest model with every tool attached." }),
+      h("li", { text: `${laneLabel("clef")}: each step is classified, then your preferences guide model selection.` }),
+      h("li", { text: `${laneLabel("baseline")}: every step goes to the strongest model with every tool attached.` }),
       h("li", { text: travel ? "You compare cost, tokens, speed, itinerary quality and whether flights and a hotel were held." : "You compare cost, tokens, speed, reply quality and whether the right actions happened." })));
 }
 
@@ -648,9 +691,10 @@ function renderScorecard(run) {
   const cChecks = checkTotals(clef), bChecks = checkTotals(base);
   const qDelta = (clef.totals && base.totals && clef.totals.reply_score != null && base.totals.reply_score != null) ? clef.totals.reply_score - base.totals.reply_score : null;
   const baselineName = (modelOf(run.started ? run.started.baseline_model : "") || { display: "the strongest model" }).display;
+  const routerCostNote = uiCopy("routing_cost_notice");
   const rows = [
     h("tr", {}, h("td", { class: "metric", text: "Cost" }),
-      h("td", { class: "r" }, val(clef, "cost_usd", usd), cTot.router_cost_usd || cTot.check_cost_usd ? h("div", { class: "sub", text: `includes Clef ~${usd(cTot.router_cost_usd)} · checks ${usd(cTot.check_cost_usd)}` }) : null),
+      h("td", { class: "r" }, val(clef, "cost_usd", usd), cTot.router_cost_usd || cTot.check_cost_usd ? h("div", { class: "sub", text: `includes routing ~${usd(cTot.router_cost_usd)} · checks ${usd(cTot.check_cost_usd)}` }) : null),
       h("td", { class: "r" }, val(base, "cost_usd", usd)),
       showDiff ? deltaCell(cum.cost, usd, ["saved", "more"], { base: bTot.cost_usd }) : h("td", { class: "r" }, h("span", { class: "skel" }))),
     h("tr", {}, h("td", { class: "metric", text: "Tokens" }),
@@ -658,7 +702,7 @@ function renderScorecard(run) {
       h("td", { class: "r" }, val(base, "tokens_total", int)),
       showDiff ? deltaCell(cum.tokens, int, ["saved", "more"], { base: bTot.tokens_total }) : h("td", { class: "r" }, h("span", { class: "skel" }))),
     h("tr", {}, h("td", { class: "metric", text: "Time" }),
-      h("td", { class: "r" }, val(clef, "latency_ms", secs), h("div", { class: "sub", text: "adds Clef and checks" })),
+      h("td", { class: "r" }, val(clef, "latency_ms", secs), h("div", { class: "sub", text: "adds routing and checks" })),
       h("td", { class: "r" }, val(base, "latency_ms", secs)),
       showDiff ? deltaCell(cum.latency, secs, ["faster", "slower"], { base: bTot.latency_ms }) : h("td", { class: "r" }, h("span", { class: "skel" }))),
     h("tr", {}, h("td", { class: "metric", text: AGENT_COPY[run.agent].quality }),
@@ -674,12 +718,12 @@ function renderScorecard(run) {
       h("span", { class: "hint", text: done ? "Final totals" : "Updating as steps finish" })),
     h("div", { class: "table-wrap" }, h("table", { class: "scorecard" },
       h("thead", {}, h("tr", {}, h("th", {}),
-        laneHead("With Clef", "Each step routed by your preferences", clef),
-        laneHead("Without Clef", `${baselineName} on every step, all tools attached`, base),
+        laneHead(laneLabel("clef"), "Each step routed by your preferences", clef),
+        laneHead(laneLabel("baseline"), `${baselineName} on every step, all tools attached`, base),
         h("th", { class: "r" }, h("div", { class: "lane-name", style: "justify-content:flex-end", text: "Difference" }), h("div", { class: "lane-sub", text: done ? "Whole case" : "Completed steps so far" })))),
       h("tbody", {}, rows),
-      h("tfoot", {}, h("tr", { class: "foot" }, h("td", { colSpan: 4, title: app.info.router_cost_note },
-        `Clef's cost is an estimate of GPU time per decision (${usd(app.info.router_cost_usd)}); quality checks are counted for With Clef because they are part of keeping quality up. Clef's own tokens (${int(cTot.clef_tokens)}) run on your hosted model and are not billed per token. Tool time (web, weather) is left out of Time.`))))));
+      h("tfoot", {}, h("tr", { class: "foot" }, h("td", { colSpan: 4, title: routerCostNote },
+        `${routerCostNote} Quality checks are included in ${laneLabel("clef")}. Router tokens (${int(cTot.router_tokens ?? cTot.clef_tokens)}) are listed separately from execution/check tokens. Tool time (web, weather) is left out of Time.`))))));
 }
 
 function finalStep(run, laneName) {
@@ -695,7 +739,12 @@ function renderReplies(run) {
     return h("div", { class: `reply ${laneName}` },
       h("div", { class: "reply-head" }, h("h3", { text: title }),
         h("span", { class: "hint" }, exec ? [modelChip(exec.model), " · "] : null, score !== null && score !== undefined ? h("span", { class: "score", text: `${score} / 5` }) : null)),
-      exec ? (run.agent === "travel" ? renderItinerary(exec.output) : h("div", { class: "reply-text", text: exec.output || "(empty reply)" }))
+      exec ? (exec.output_error
+        ? h("div", { class: "alert bad", role: "alert" }, h("div", { class: "grow" },
+          h("b", { text: "The itinerary could not be generated as complete, valid JSON." }),
+          h("div", { text: exec.output_error }),
+          h("div", { class: "hint", text: "The unsuccessful output is available in the step details. Existing holds have not been repeated." })))
+        : run.agent === "travel" ? renderItinerary(exec.output) : h("div", { class: "reply-text", text: exec.output || "(empty reply)" }))
         : step && step.status === "failed" ? h("div", { class: "reply-text bad", text: "No reply was produced for this lane." })
           : h("div", { class: "reply-text" }, lane.status === "error" ? "This lane stopped before replying." : h("span", { class: "pending" }, h("span", { class: "spinner" }), "Working on earlier steps…")),
       lane.checks && lane.checks.length ? h("ul", { class: "checks" }, lane.checks.map((c) => h("li", {},
@@ -703,12 +752,12 @@ function renderReplies(run) {
       lane.changes ? h("div", { class: "changes", text: lane.changes.length ? `${AGENT_COPY[run.agent].actions}: ${lane.changes.join("; ")}.` : `${AGENT_COPY[run.agent].actions}: none.` }) : null);
   };
   const travel = run.agent === "travel", mode = travel ? app.desks.travel.itin : "both";
-  const cols = [mode !== "baseline" ? col("clef", "With Clef") : null, mode !== "clef" ? col("baseline", "Without Clef") : null].filter(Boolean);
+  const cols = [mode !== "baseline" ? col("clef", laneLabel("clef")) : null, mode !== "clef" ? col("baseline", laneLabel("baseline")) : null].filter(Boolean);
   const toggle = h("div", { class: "seg compact", role: "radiogroup", "aria-label": "Which itinerary to show" },
-    [["clef", "With Clef"], ["baseline", "Without"], ["both", "Side by side"]].map(([value, label]) => h("label", {},
+    [["clef", laneLabel("clef")], ["baseline", laneLabel("baseline")], ["both", "Side by side"]].map(([value, label]) => h("label", {},
       h("input", { type: "radio", name: "itin-view", value, checked: mode === value, onchange: () => { app.desks.travel.itin = value; renderResults(); } }), h("span", { text: label }))));
   return h("section", { "aria-labelledby": "reply-title" },
-    h("div", { class: "section-title" }, h("h2", { id: "reply-title", text: AGENT_COPY[run.agent].replyTitle }), travel ? toggle : null),
+    h("div", { class: "section-title itinerary-controls" }, h("h2", { id: "reply-title", text: AGENT_COPY[run.agent].replyTitle }), travel ? toggle : null),
     h("div", { class: cols.length > 1 ? "replies" : "single" }, cols));
 }
 
@@ -755,7 +804,7 @@ function renderItinerary(text) {
 
 function laneLine(run, laneName, index) {
   const step = run.lanes[laneName].steps[index];
-  const who = laneName === "clef" ? "With Clef" : "Without Clef";
+  const who = laneLabel(laneName);
   if (!step) return h("div", { class: "lane-line" }, h("span", { class: "who", text: who }), h("span", { class: "pending", style: "grid-column: span 4" }, run.lanes[laneName].status === "error" ? "Not reached" : "Waiting for earlier steps"));
   const v = step.view;
   if (!v) {
@@ -802,7 +851,7 @@ function renderSteps(run) {
       h("div", { class: "step-head" }, h("span", { class: "step-n", text: String(index) }), h("span", { class: "step-title", text: planned.title }),
         planned.specialist ? h("span", { class: "spec", title: planned.parallel ? "Runs at the same time as its neighbours" : "Runs on its own", text: `${planned.specialist}${planned.parallel ? " · parallel" : ""}` }) : null,
         planned.reply ? h("span", { class: "hint", text: "final answer" }) : null,
-        d ? h("span", { class: "route" }, "Clef sees: ", h("b", { text: ROUTE_LABEL[d.clef.route] || d.clef.route }), d.clef.source === "fallback" ? " Clef did not answer in time, so a safe default was used." : ` ${fraction(d.clef.confidence)}`) : null),
+        d ? h("span", { class: "route" }, "Decision-model assessment: ", h("b", { text: ROUTE_LABEL[d.clef.route] || d.clef.route }), d.clef.source === "fallback" ? " The router did not answer in time, so a safe default was used." : ` ${fraction(d.clef.confidence)}`) : null),
       h("div", { class: "lanes" }, laneLine(run, "clef", index), laneLine(run, "baseline", index)),
       strip(run, index, { ...running }),
       cs ? cs.notes.map((n) => h("div", { class: `note ${n.kind === "bad" ? "bad" : ""}`, text: n.text })) : null,
@@ -820,21 +869,34 @@ function toolCalls(step) {
   return h("pre", { class: "out", text: calls.map((c) => `${c.name}(${Object.entries(c.arguments).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ")})\n  → ${JSON.stringify(c.result)}`).join("\n") });
 }
 
+function routerPrompt(request, run = null) {
+  if (!request) return h("p", { class: "hint", text: "The decision-model prompt was not captured for this call. Enable --capture-router-prompts before a new run." });
+  return h("details", { class: "more" },
+    h("summary", { text: uiCopy("decision_prompt") }),
+    h("p", { class: "hint", text: "Native request body, without authentication headers. Retries and reviewer selection reuse this decision; they do not ask the router again." }),
+    routerDetails(run),
+    h("pre", { class: "out", text: JSON.stringify(request, null, 2) }));
+}
+
 function stepDetails(run, index) {
   const cs = run.lanes.clef.steps[index], bs = run.lanes.baseline.steps[index];
   const d = cs && cs.decisions.length ? cs.decisions[cs.decisions.length - 1].decision : null;
   const judgeLine = (step) => {
     const j = step && step.judges.length ? step.judges[step.judges.length - 1] : null;
-    const by = j && j.routing ? ` Checked by ${(modelOf(j.model) || { display: j.model }).display}${j.fell_back ? " (Clef's pick did not give a score, so the fixed reviewer was used)" : ""}.` : "";
+    const by = j && j.routing ? ` Checked by ${(modelOf(j.model) || { display: j.model }).display}${j.fell_back ? " (the router's pick did not give a score, so the fixed reviewer was used)" : ""}.` : "";
     return j ? h("p", { class: "hint", text: `Check: ${j.score === null ? "unavailable" : `${j.score}/5`}. ${j.reason}${by}` }) : null;
   };
-  const clefCol = h("div", {}, h("h4", { text: "With Clef" }));
+  const clefCol = h("div", {}, h("h4", { text: laneLabel("clef") }));
+  const routingEvent = run.shadow.decisions[String(index)];
+  if (run.shadow.on) clefCol.append(routerPrompt(routingEvent && routingEvent.router_request, run));
   if (d) {
     const top = Object.entries(d.clef.probabilities).sort((a, b) => b[1] - a[1]).slice(0, 3);
     clefCol.append(
       h("dl", { class: "kv" },
         h("dt", { text: "Why" }), h("dd", { text: d.reason }),
-        h("dt", { text: "Clef" }), h("dd", { text: d.clef.source === "fallback" ? `No answer (${d.clef.error || "timeout"}). Safe default step type used.` : top.map(([r, p]) => `${ROUTE_LABEL[r] || r} ${fraction(p)}`).join(" · ") }),
+        d.needs_json ? h("dt", { text: "Required format" }) : null,
+        d.needs_json ? h("dd", { text: `JSON object via ${d.json_api === "chat" ? "Chat Completions" : "Responses API"}` }) : null,
+        h("dt", { text: "Decision-model assessment" }), h("dd", { text: d.clef.source === "fallback" ? `No answer (${d.clef.error || "timeout"}). Safe default used.` : top.map(([r, p]) => `${ROUTE_LABEL[r] || r} ${fraction(p)}`).join(" · ") }),
         h("dt", { text: "Needs" }), h("dd", { text: d.requirement.parts.map(([n, v]) => `${n} ${v >= 0 ? "+" : ""}${(v * 100).toFixed(0)}`).join(" · ") + ` = ${fraction(d.requirement.total)}` })),
       h("table", {}, h("thead", {}, h("tr", {}, h("th", { text: "Model" }), h("th", { class: "r", text: "Expected quality" }), h("th", { class: "r", text: "Est. cost" }), h("th", { text: "Result" }))),
         h("tbody", {}, d.candidates.map((c) => h("tr", { class: c.status === "eliminated" ? "off" : "" },
@@ -843,7 +905,7 @@ function stepDetails(run, index) {
   }
   clefCol.append(h("h4", { text: "Tool calls" }), toolCalls(cs), h("h4", { text: "Output" }),
     h("pre", { class: "out", text: (lastExec(cs) || { output: "Waiting…" }).output }), judgeLine(cs));
-  const baseCol = h("div", {}, h("h4", { text: "Without Clef" }), h("h4", { text: "Tool calls" }), toolCalls(bs), h("h4", { text: "Output" }),
+  const baseCol = h("div", {}, h("h4", { text: laneLabel("baseline") }), h("h4", { text: "Tool calls" }), toolCalls(bs), h("h4", { text: "Output" }),
     h("pre", { class: "out", text: (lastExec(bs) || { output: "Waiting…" }).output }), judgeLine(bs));
   return h("div", { class: "detail-grid" }, clefCol, baseCol);
 }
@@ -852,6 +914,8 @@ function stepDetails(run, index) {
 function renderModels() {
   const root = $("#models-table");
   clearEl(root);
+  root.append(h("section", { class: "router-details" },
+    h("h2", { text: "Decision-model details" }), routerDetails()));
   const toggle = (model, field) => h("input", { type: "checkbox", class: "toggle", checked: model[field], "aria-label": `${field === "healthy" ? "Healthy" : "Allowed"}: ${model.display}`,
     onchange: async (ev) => {
       try { await api(`/api/registry/${model.id}`, { [field]: ev.target.checked }); await refreshState(); renderModels(); toast("Registry updated. It applies to the next run."); }
@@ -933,33 +997,33 @@ async function loadInsights() {
   const saved = (p) => (p === null ? "n/a" : p >= 0 ? `${p}% lower` : `${Math.abs(p)}% higher`);
   const kind = (p) => (p === null ? "" : p > 0 ? "good" : p < 0 ? "bad" : "");
   root.append(h("div", { class: "stats" },
-    stat("Cost", saved(r.cost_usd.saved_pct), `${usd(r.cost_usd.clef)} with Clef vs ${usd(r.cost_usd.baseline)} without, over ${r.runs} runs`, kind(r.cost_usd.saved_pct)),
-    stat("Tokens", saved(r.tokens.saved_pct), `${int(r.tokens.clef)} vs ${int(r.tokens.baseline)}, checks included`, kind(r.tokens.saved_pct)),
-    stat("Time per run", saved(r.latency_ms.saved_pct), `${secs(r.latency_ms.clef)} vs ${secs(r.latency_ms.baseline)} on average`, kind(r.latency_ms.saved_pct)),
-    stat("Answer quality", `${r.reply_score.clef ?? "n/a"} vs ${r.reply_score.baseline ?? "n/a"}`, "average out of 5, with vs without Clef")));
+    stat("Cost", saved(r.cost_usd.saved_pct), `${usd(r.cost_usd.clef)} ${laneLabel("clef")} vs ${usd(r.cost_usd.baseline)} ${laneLabel("baseline")}, over ${r.runs} runs`, kind(r.cost_usd.saved_pct)),
+    stat("Tokens", saved(r.tokens.saved_pct), `${int(r.tokens.clef)} vs ${int(r.tokens.baseline)}, ${laneLabel("clef")} vs ${laneLabel("baseline")}, checks included`, kind(r.tokens.saved_pct)),
+    stat("Time per run", saved(r.latency_ms.saved_pct), `${secs(r.latency_ms.clef)} vs ${secs(r.latency_ms.baseline)}, ${laneLabel("clef")} vs ${laneLabel("baseline")} on average`, kind(r.latency_ms.saved_pct)),
+    stat("Answer quality", `${r.reply_score.clef ?? "n/a"} vs ${r.reply_score.baseline ?? "n/a"}`, `average out of 5, ${laneLabel("clef")} vs ${laneLabel("baseline")}`)));
   const mixTotal = Object.values(r.model_mix).reduce((a, m) => a + m.steps, 0) || 1;
   const routes = data.decisions.route_counts || {};
   const routeTotal = Object.values(routes).reduce((a, n) => a + n, 0) || 1;
   const barRow = (label, f, value) => h("div", { class: "bar-row" }, h("span", { class: "name", title: label, text: label }), h("div", { class: "track" }, h("div", { class: "fill", vars: { "--w": `${Math.min(1, f) * 100}%` } })), h("span", { class: "val", text: value }));
   root.append(h("div", { class: "two-col" },
-    h("div", {}, h("h2", { text: "Which models handled the steps" }), h("p", { class: "hint", text: "With Clef lane only. Without Clef uses one model for everything." }),
+    h("div", {}, h("h2", { text: "Which models handled the steps" }), h("p", { class: "hint", text: `${laneLabel("clef")} only. ${laneLabel("baseline")} uses one model for every step.` }),
       h("div", { class: "bars" }, Object.entries(r.model_mix).sort((a, b) => b[1].steps - a[1].steps).map(([id, m]) => barRow((modelOf(id) || { display: id }).display, m.steps / mixTotal, `${m.steps} steps`)))),
-    h("div", {}, h("h2", { text: "What Clef saw" }), h("p", { class: "hint", text: `Router time p50 ${secs(data.decisions.router_ms_p50)}, p95 ${secs(data.decisions.router_ms_p95)}.` }),
+    h("div", {}, h("h2", { text: "Recorded routing decisions" }), h("p", { class: "hint", text: `Router time p50 ${secs(data.decisions.router_ms_p50)}, p95 ${secs(data.decisions.router_ms_p95)}.` }),
       h("div", { class: "bars" }, Object.entries(routes).sort((a, b) => b[1] - a[1]).map(([id, n]) => barRow(ROUTE_LABEL[id] || id, n / routeTotal, String(n)))))));
   try {
     const sh = await api("/api/shadow");
     if (sh.enabled && sh.decisions) {
       const total = sh.decisions || 1;
       root.append(h("h2", { text: "Shadow selector", style: "margin-top:32px" }),
-        h("p", { class: "hint", text: `${sh.decisions} decisions over ${sh.runs} runs, none applied. Mean expected success ${fraction(sh.mean_expected_success)}; ${sh.uncertain} were flagged unsure, ${sh.below_floor} had no endpoint above the floor and ${sh.thin_evidence} rest mostly on pooled evidence.${sh.errors ? ` Clef did not answer ${sh.errors} times.` : ""}` }),
+        h("p", { class: "hint", text: `${sh.decisions} recorded decisions over ${sh.runs} runs. Mean expected success ${fraction(sh.mean_expected_success)}; ${sh.uncertain} were flagged unsure, ${sh.below_floor} had no endpoint above the floor and ${sh.thin_evidence} rest mostly on pooled evidence.${sh.errors ? ` The decision model did not answer ${sh.errors} times.` : ""}` }),
         h("div", { class: "two-col" },
           h("div", {}, h("h3", { text: "Endpoints it would pick" }), h("div", { class: "bars" }, Object.entries(sh.by_endpoint).sort((a, b) => b[1] - a[1]).map(([id, n]) => barRow(endpointName(id), n / total, String(n))))),
-          h("div", {}, h("h3", { text: "Capability Clef saw" }), h("div", { class: "bars" }, Object.entries(sh.by_tier).sort((a, b) => b[1] - a[1]).map(([id, n]) => barRow(id, n / total, String(n)))))));
+          h("div", {}, h("h3", { text: "Assessed capability" }), h("div", { class: "bars" }, Object.entries(sh.by_tier).sort((a, b) => b[1] - a[1]).map(([id, n]) => barRow(id, n / total, String(n)))))));
     }
   } catch (_) { /* the shadow totals are optional */ }
   root.append(h("h2", { text: "Recent runs", style: "margin-top:32px" }),
     h("div", { class: "table-wrap" }, h("table", {},
-      h("thead", {}, h("tr", {}, h("th", { text: "When" }), h("th", { text: "Agent" }), h("th", { text: "Preferences" }), h("th", { class: "r", text: "Cost" }), h("th", { class: "r", text: "Tokens" }), h("th", { class: "r", text: "Time" }), h("th", { class: "r", text: "Quality (with vs without)" }))),
+      h("thead", {}, h("tr", {}, h("th", { text: "When" }), h("th", { text: "Agent" }), h("th", { text: "Preferences" }), h("th", { class: "r", text: "Cost" }), h("th", { class: "r", text: "Tokens" }), h("th", { class: "r", text: "Time" }), h("th", { class: "r", text: `Quality (${laneLabel("clef")} vs ${laneLabel("baseline")})` }))),
       h("tbody", {}, r.recent.map((x) => h("tr", {},
         h("td", { text: new Date(x.created_utc).toLocaleString() }),
         h("td", { text: x.agent === "travel" ? "Travel planner" : "Support desk" }),
@@ -975,13 +1039,13 @@ function renderAbout() {
   root.append(h("div", { class: "about" },
     h("h1", { id: "about-title", text: "How it works" }),
     h("p", { class: "lede", text: "This is a small, honest proof of concept for the Adaptive Intelligence Engine idea: send each step of an agent's work to the cheapest model that is good enough." }),
-    h("h2", { text: "What happens to a customer message" }),
+    h("h2", { text: "What happens to a request" }),
     h("ol", {},
-      h("li", { text: "A planner turns the message into steps (Clef picks which model plans it, with GPT-4.1 as the fallback). The last step is always the reply to the customer." }),
-      h("li", { text: "With Clef: the fine-tuned Clef-Flash model reads each step and the available tools, and says what kind of step it is, with a confidence." }),
-      h("li", { text: "A transparent policy turns that step type, how risky the step looks, and your preferences into a capability the model must have, then picks the best-value model that meets it." }),
-      h("li", { text: "A reviewer checks the result, on a model Clef also picks (held to a higher bar than the work it checks), and a weak result is retried on a stronger model. A step that already changed the store is never repeated." }),
-      h("li", { text: "Without Clef: the same plan runs on the strongest model with every tool attached. Both lanes use separate copies of the store." })),
+      h("li", { text: "A planner turns the request into steps. The router selects the planner, with a configured fallback model. The last step writes the reply." }),
+      h("li", { text: `${laneLabel("clef")}: the configured decision model classifies each request into low, medium and high capability probabilities.` }),
+      h("li", { text: "The selector combines these probabilities with benchmark pass rates and your preferences. Tool and mandatory-JSON requirements are hard eligibility constraints." }),
+      h("li", { text: "A reviewer checks the result. A weak result can trigger another attempt; a step that already changed the store is never repeated." }),
+      h("li", { text: `${laneLabel("baseline")}: the same plan runs on the strongest model with every tool attached. Both approaches use separate copies of the store.` })),
     h("h2", { text: "The travel planner" }),
     h("ul", {},
       h("li", { text: "Give dates and, if you have one, a destination. With no destination, the agent ranks candidate cities using the weather for your dates and your interests." }),
@@ -989,19 +1053,19 @@ function renderAbout() {
       h("li", { text: "Real: web search with citations, destination guides (Wikivoyage), weather (Open-Meteo: a forecast when near, otherwise the same dates last year), and hotel names (OpenStreetMap)." }),
       h("li", { text: "Simulated: flight fares and times, hotel nightly rates, and holds. There is no free public booking service, so these are labelled illustrative and nothing can be booked or charged." }),
       h("li", { text: "Both lanes see the same tool results in a run, and web search is paid once and left out of the comparison." })),
-    h("h2", { text: "What Clef does and does not do" }),
-    h("p", { text: "Clef classifies steps into the tool-use categories it was trained on. It does not rate difficulty or compare models, and it is not asked to. Choosing the model is the policy's job, using your preferences." }),
+    h("h2", { text: "What the decision model does and does not do" }),
+    h("p", { text: "The decision model returns probabilities, not the itinerary or a generated rationale. The deterministic selector chooses the execution endpoint. The applied path uses an application-provided skill hint unless predicted skills are explicitly enabled." }),
     h("h2", { text: "How quality is measured" }),
     h("ul", {},
-      h("li", { text: "A separate AI reviewer (GPT-4.1) scores every output from 1 to 5 against the store policy and the tool results. It is not a human." }),
+      h("li", { text: "An AI reviewer scores outputs from 1 to 5 against the task requirements and tool evidence. Reviewer models are selected according to the configured routing policy; they are not human reviewers." }),
       h("li", { text: "For the example cases, the app also checks that the right actions happened: for example, a refund of exactly $138.99." })),
     h("h2", { text: "Things to keep in mind" }),
     h("ul", {},
       h("li", { text: "Model skill scores in the registry are assumptions. Results depend on them. Latency priors come from a small sample of measured calls." }),
-      h("li", { text: "Clef's cost is estimated from GPU time and assumes the GPU stays busy. On this setup a decision also takes about half a second, which counts against time." }),
+      h("li", { text: uiCopy("routing_cost_notice") }),
       h("li", { text: "A handful of example cases per agent is a demonstration, not a benchmark. One run of each case is noisy." }),
-      h("li", { text: "The fine-tuned Clef figures (about 95% agreement) come from SWE-bench and BFCL-style data labeled by AI, not from support conversations." }),
-      h("li", { text: "Customer messages are sent to your Azure OpenAI resource to run. Tools are simulated and nothing outside this app changes." }))));
+      h("li", { text: "Benchmark results do not guarantee accuracy or latency on this workload. Historical runs may have used a different decision model." }),
+      h("li", { text: "Requests are sent to the configured model endpoints. Store changes and booking holds are simulated; nothing is purchased or charged through those tools." }))));
 }
 
 /* ------------------------------------------------------------------- init */

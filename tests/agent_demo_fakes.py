@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections.abc import Callable
 from typing import Any
 
 from agent_demo.clef_decider import ClefDecision
 from agent_demo.llm import LLMError, LLMResult
+from routing_lab.capability import CapabilityResult
 
 TAXONOMY = {"code": "coding-v1", "tools": "tool-api-v1"}
 FALLBACK = {"code": "debugging", "tools": "tool_workflow"}
@@ -99,3 +101,22 @@ class ScriptedLLM:
 
 def collect(into: list[dict[str, Any]]) -> Callable[[dict[str, Any]], None]:
     return into.append
+
+
+class FakeCapabilityRouter:
+    """Stands in for the capability router: fixed tier and skill probabilities, optional outage, thread-safe call log."""
+
+    deployment = "fake-cap"
+
+    def __init__(self, tier: dict[str, float] | None = None, fail: bool = False) -> None:
+        self.tier = tier or {"low": 0.9, "medium": 0.08, "high": 0.02}
+        self.fail = fail
+        self.calls: list[str] = []
+        self.lock = threading.Lock()
+
+    def classify(self, request: str, context: str = "") -> CapabilityResult:
+        with self.lock:
+            self.calls.append(request)
+        if self.fail:
+            raise RuntimeError("endpoint down")
+        return CapabilityResult(self.tier, {"coding": 0.1, "reasoning": 0.2, "tools": 0.5, "writing": 0.1, "extraction": 0.1}, 40.0, 120, "fake-cap")

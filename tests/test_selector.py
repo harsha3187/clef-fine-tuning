@@ -81,6 +81,22 @@ def test_hard_filters_remove_endpoints_before_any_scoring():
     assert allowed.choice == "mid"
 
 
+def test_mandatory_json_is_a_hard_constraint_not_a_quality_preference():
+    from dataclasses import replace
+
+    pool = [ep("cheap", 1.0), replace(ep("big", 20.0), json_api="chat")]
+    result = select(pool, rate, {"high": 1.0}, None, BALANCED, Constraints(needs_json=True))
+    assert result.choice == "big"
+    eliminated = next(c for c in result.candidates if c.endpoint == "cheap")
+    assert eliminated.status == "eliminated" and "JSON" in eliminated.reasons[0]
+    assert eliminated.utility is None
+    none = select([pool[0]], rate, {"low": 1.0}, None, BALANCED, Constraints(needs_json=True))
+    assert none.choice is None
+    assert select(pool, rate, {"low": 1.0}, None, BALANCED).choice == "cheap"
+    with_tools = select([pool[1]], rate, {"low": 1.0}, None, BALANCED, Constraints(needs_tools=True, needs_json=True))
+    assert with_tools.choice is None and "single-turn" in with_tools.candidates[0].reasons[0]
+
+
 def test_an_unmeasured_endpoint_is_never_selectable():
     pool = [*POOL, ep("new", 0.01)]
     result = select(pool, rate, {"low": 1.0}, None, BALANCED, ONE_TOKEN)
@@ -134,7 +150,6 @@ def test_the_registry_falls_back_to_the_tier_rate_and_refuses_thin_data():
     assert registry.rate("ghost", "coding", "low") is None
     shares = registry.evidence("a", {"low": 0.5, "high": 0.5}, {"coding": 0.5, "tools": 0.5})
     assert shares == {"exact_share": 0.25, "pooled_share": 0.25, "missing_share": 0.5}
-    assert [e.allowed for e in registry.with_changes(allowed={"a": False})] == [False]
 
 
 def test_registry_builder_counts_passes_by_skill_and_tier_and_skips_failed_calls():

@@ -1,5 +1,6 @@
-# Fine-tuned Clef weights are large binary files: store them with Git LFS, not in normal git history.
-# (GitHub rejects files over 100 MB without LFS.) Run `git lfs install` once per machine before the first commit.
+# Normalize text to LF in the repository. The weights are not committed (see .gitignore); if you ever add them, GitHub rejects files over
+# 100 MB without Git LFS, so keep these filters and run `git lfs install` first.
+* text=auto eol=lf
 models/**/*.safetensors filter=lfs diff=lfs merge=lfs -text
 *.safetensors filter=lfs diff=lfs merge=lfs -text
 

@@ -156,7 +156,7 @@ def _new_travel_desk(llm: Any, shared: Any, web: PublicWeb = PublicWeb()) -> Any
 TRAVEL = Domain(
     id="travel", title="Travel planner", tools=travel.TOOLS, router_tools=travel.router_tools(),
     responses_tools=travel.responses_tools(), new_shared=travel.SharedResults, make_desk=_new_travel_desk,
-    scenarios_file="travel_scenarios.json", max_steps=8, parallel=True, reply_json=True, reply_tokens=5000,
+    scenarios_file="travel_scenarios.json", max_steps=8, parallel=True, reply_json=True, reply_tokens=6000,
     baseline_tokens=6000, evidence_chars=9000, summary_chars=2200,
     stakes=re.compile(r"\b(hold|book|reserve)\w*\b", re.I), validate_reply=validate_itinerary,
     planner_system=(

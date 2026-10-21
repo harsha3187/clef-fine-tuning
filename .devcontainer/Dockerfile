@@ -4,6 +4,7 @@ FROM mcr.microsoft.com/devcontainers/python:1-3.11-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
-COPY requirements-app.txt requirements-test.txt .devcontainer/requirements-dev.txt /tmp/deps/
-RUN pip install -r /tmp/deps/requirements-app.txt -r /tmp/deps/requirements-test.txt -r /tmp/deps/requirements-dev.txt \
+COPY pyproject.toml /tmp/deps/
+RUN pip install --upgrade "pip>=25.1" \
+    && cd /tmp/deps && pip install --group app --group test --group devcontainer \
     && rm -rf /tmp/deps

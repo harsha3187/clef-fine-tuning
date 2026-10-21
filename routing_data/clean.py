@@ -11,7 +11,6 @@ score was meaningless. These rules remove the cases where the score is not a rel
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass
 
 from routing_data.labels import LabelRules, Pool, usable
@@ -45,7 +44,3 @@ def exclude_reason(record: CanonicalRecord, pool: Pool | None, labels: LabelRule
             and max(o.quality for o in observed) <= 0.0):
         return "every model scored 0 in a pool where the best models barely score"
     return None
-
-
-def drop_counts(reasons: list[str | None]) -> dict[str, int]:
-    return dict(Counter(r for r in reasons if r))

@@ -151,7 +151,7 @@ def test_local_client_matches_real_scorer_contract(
     # matching the persistent-session client's actual self._session.post(...) call.
     monkeypatch.setattr("requests.Session.post", Mock(side_effect=send))
     backend = ClefEndpointBackend(
-        contracts, url="https://clef-routing-exp.eastus2.inference.ml.azure.com/score",
+        contracts, url="https://example-endpoint.eastus2.inference.ml.azure.com/score",
     )
     decision = backend.predict(make_record())
     assert decision.route == "repository_qa"

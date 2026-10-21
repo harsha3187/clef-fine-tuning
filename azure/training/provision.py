@@ -13,8 +13,8 @@ import subprocess
 
 DEFAULTS = {
     "subscription": os.environ.get("AZURE_SUBSCRIPTION_ID", ""),  # not stored in the repository
-    "resource_group": "rg-clef-exp-eus2",
-    "workspace": "aml-clef-exp-eus2",
+    "resource_group": os.environ.get("AZURE_RESOURCE_GROUP", ""),  # not stored in the repository
+    "workspace": os.environ.get("AZURE_ML_WORKSPACE", ""),  # not stored in the repository
     "vnet": "vnet-clef-exp",
     "subnet": "subnet-compute",
 }
@@ -56,6 +56,9 @@ def main() -> int:
     args = create_parser().parse_args()
     if not args.approve:
         raise ValueError("Pass --approve to create the cluster and grant its identity access")
+    if not (args.subscription and args.resource_group and args.workspace):
+        raise ValueError("Set AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP and AZURE_ML_WORKSPACE, "
+                         "or pass --subscription, --resource-group and --workspace")
     from azure.ai.ml import MLClient
     from azure.ai.ml.entities import AmlCompute, IdentityConfiguration, NetworkSettings
     from azure.identity import AzureCliCredential

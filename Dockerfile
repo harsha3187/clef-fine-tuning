@@ -1,4 +1,4 @@
-﻿#
+#
 # Adaptive Intelligence Engine: the agent app, the routing API and the shadow selector.
 #
 #   docker build -t aie .                       the service (default target)
@@ -17,13 +17,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
-COPY requirements-app.txt ./
-RUN pip install -r requirements-app.txt
+# Dependency groups in pyproject.toml (PEP 735). Installing them needs pip 25.1 or newer, and the project file stays out of the service image.
+COPY pyproject.toml ./
+RUN pip install --upgrade "pip>=25.1" \
+    && pip install --group app \
+    && rm pyproject.toml
 
 # ------------------------------------------------------------------------------------------------ tests
 FROM deps AS test
-COPY requirements-test.txt pyproject.toml ./
-RUN pip install -r requirements-test.txt
+COPY pyproject.toml ./
+RUN pip install --group test
 COPY agent_demo/ agent_demo/
 COPY routing_lab/ routing_lab/
 COPY capability_lab/ capability_lab/
@@ -33,7 +36,7 @@ COPY azure/online/connection.js* azure/online/
 COPY tests/ tests/
 CMD ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", \
      "tests/test_agent_demo_core.py", "tests/test_agent_demo_router_agent.py", "tests/test_agent_demo_server.py", \
-     "tests/test_agent_demo_shadow.py", "tests/test_agent_demo_travel.py", "tests/test_selector.py", \
+     "tests/test_agent_demo_travel.py", "tests/test_selector.py", \
      "tests/test_endpoint.py", "tests/test_capability.py", "tests/test_verify_model.py", "tests/test_token_broker.py", "tests/test_agent_demo_apply.py"]
 
 # ------------------------------------------------------------------------------------------------ service

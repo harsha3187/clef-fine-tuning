@@ -31,6 +31,7 @@ from agent_demo.domains import DOMAINS, travel_message
 from agent_demo.llm import AzureResponsesClient
 from agent_demo.policy import Complexity, Policy, compute_requirement, select_model
 from agent_demo.preferences import LEVELS, PRESETS, Preferences
+from agent_demo.labels import LANE_LABELS, UI_COPY
 from agent_demo.registry import Registry
 from agent_demo.shadow import ShadowItem, ShadowSelector, aggregate, display_name, endpoint_tier
 from agent_demo.router import AdaptiveRouter, RoutingContext, RoutingError
@@ -183,6 +184,8 @@ class Engine:
         table = self.policy.preference_table
         return {
             "router_version": ROUTER_VERSION, "registry_version": self.registry.version,
+            "lane_labels": LANE_LABELS.copy(),
+            "ui_copy": UI_COPY.copy(),
             "policy_version": self.policy.version,
             "preferences": {"value": self.prefs.to_dict(), "saved": self.prefs_saved, "presets": PRESETS,
                             "options": {field: [{"id": level, "label": table[field][level]["label"],
@@ -190,7 +193,8 @@ class Engine:
                                                 for level in levels] for field, levels in LEVELS.items()}},
             "limits": self.policy.limits, "baseline_model": self.policy.baseline_model,
             "planner_model": self.policy.planner_model, "judge_model": self.policy.judge_model,
-            "router_cost_usd": self.policy.router_cost_usd, "router_cost_note": self.policy.data["router_cost_note"],
+            "router_cost_usd": None if self.shadow and self.shadow.versions["provider"] == "decision-1" else self.policy.router_cost_usd,
+            "router_cost_note": getattr(self.shadow.router, "cost_note", self.policy.data["router_cost_note"]) if self.shadow else self.policy.data["router_cost_note"],
             "clef": {"deployment": self.deployment, "adapter_sha256": self.adapter_sha256,
                      "last": getattr(self.decider, "last", None)},
             "agents": {d.id: {"title": d.title, "kind": "form" if d.id == "travel" else "message",
@@ -212,8 +216,8 @@ class Engine:
 
     def shadow_totals(self) -> dict[str, Any]:
         if self.shadow is None or self.shadow.log_path is None:
-            return {"enabled": False}
-        return {"enabled": True, "versions": self.shadow.versions, **aggregate(self.shadow.log_path)}
+            return {"enabled": False, "lane_labels": LANE_LABELS.copy()}
+        return {"enabled": True, "lane_labels": LANE_LABELS.copy(), "versions": self.shadow.versions, **aggregate(self.shadow.log_path)}
 
 
 class ApiError(Exception):
@@ -327,6 +331,7 @@ def make_handler(engine: Engine, allowed_hosts: set[str]) -> type[BaseHTTPReques
                 if agent is not None and agent not in engine.domains:
                     raise ApiError(400, "Unknown agent")
                 return self._send(200, {"runs": engine.telemetry.run_aggregates(agent=agent),
+                                        "lane_labels": LANE_LABELS.copy(),
                                         "decisions": engine.telemetry.aggregates(),
                                         "recent": engine.telemetry.recent(30),
                                         "registry_version": engine.registry.version})
@@ -491,6 +496,7 @@ def make_handler(engine: Engine, allowed_hosts: set[str]) -> type[BaseHTTPReques
             if kind not in ("plan", "step", "reply"):
                 raise ApiError(400, "kind must be plan, step or reply")
             needs_tools = require(body, "needs_tools", bool, default=kind == "step")
+            needs_json = require(body, "needs_json", bool, default=False)
             allow = body.get("allow")
             if allow is not None and (not isinstance(allow, list) or len(allow) > 50
                                       or any(not isinstance(x, str) or not _MODEL_ID.fullmatch(x) for x in allow)):
@@ -503,7 +509,7 @@ def make_handler(engine: Engine, allowed_hosts: set[str]) -> type[BaseHTTPReques
                 sizes[field] = value
             mode = engine.policy.derive(prefs).mode
             settings = Settings(mode.quality_floor, mode.lambda_cost, mode.mu_latency)
-            event = engine.shadow.decide(ShadowItem("api", kind, text, needs_tools, sizes["input_tokens"], sizes["output_tokens"]),
+            event = engine.shadow.decide(ShadowItem("api", kind, text, needs_tools, sizes["input_tokens"], sizes["output_tokens"], needs_json),
                                          settings, frozenset(allow) if allow is not None else None)
             if event["type"] == "shadow_error":
                 raise ApiError(503, "The capability router did not answer; try again")
@@ -599,22 +605,32 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--deployment", default=env("AIE_DEPLOYMENT", "flash-ft-gpu"))
     parser.add_argument("--adapter-sha256", default=env("AIE_ADAPTER_SHA256", FINETUNED_ADAPTER_SHA256))
     parser.add_argument("--llm-endpoint", default=env("AIE_LLM_ENDPOINT", LLM_ENDPOINT))
+    parser.add_argument("--router-provider", choices=("clef", "decision-1"), default=env("AIE_ROUTER_PROVIDER", "clef"),
+                        help="Choose the capability decision provider without modifying existing endpoints")
+    parser.add_argument("--decision-endpoint", default=env("AIE_DECISION_ENDPOINT"),
+                        help="Resource URL for the native decision API; defaults to the existing model resource")
+    parser.add_argument("--decision-deployment", default=env("AIE_DECISION_DEPLOYMENT", "decision-1"))
+    parser.add_argument("--decision-token-price", type=float, default=float(env("AIE_DECISION_TOKEN_PRICE", "0.042")),
+                        help="Estimated USD per million decision-model input/output tokens; verify the deployment's billing meter")
     parser.add_argument("--shadow-deployment", default=env("AIE_SHADOW_DEPLOYMENT", CAPABILITY_DEPLOYMENT))
     parser.add_argument("--shadow-adapter-sha256", default=env("AIE_SHADOW_ADAPTER_SHA256", CAPABILITY_ADAPTER_SHA256))
     parser.add_argument("--shadow-url", default=env("AIE_SHADOW_URL"),
                         help="Scoring URL for the shadow router, when it is not the endpoint in the connection file")
     parser.add_argument("--shadow-local", action="store_true", default=env_flag("AIE_SHADOW_LOCAL"),
-                        help="The shadow router is a local Clef container: plain http://host:port/score, no Azure token sent")
+                        help="Use a locally hosted router at http://host:port/score, without sending a cloud access token")
     parser.add_argument("--shadow-use-skill", action="store_true", default=env_flag("AIE_SHADOW_USE_SKILL"),
                         help="Let the selector use the router's skill answer (the current model was trained without skill labels)")
+    parser.add_argument("--capture-router-prompts", action="store_true", default=env_flag("AIE_CAPTURE_ROUTER_PROMPTS"),
+                        help="Include exact decision-model request bodies and selection inputs in events and shadow.jsonl. "
+                             "Opt-in: stores user request text locally, but never authentication headers")
     parser.add_argument("--apply-selector", action=argparse.BooleanOptionalAction, default=os.environ.get("AIE_APPLY_SELECTOR", "1").strip().lower() in TRUE_VALUES,
-                        help="Run the With Clef lane on the endpoints the capability router and selector choose (default). --no-apply-selector "
+                        help=f"Run {LANE_LABELS['clef']} on the endpoints the capability router and selector choose (default). --no-apply-selector "
                              "keeps it on the old step-type router and policy, and the selector only watches")
     parser.add_argument("--route-planner", action=argparse.BooleanOptionalAction, default=os.environ.get("AIE_ROUTE_PLANNER", "1").strip().lower() in TRUE_VALUES,
-                        help="Let Clef and the selector choose the planner model too (default; needs --apply-selector). The fixed planner in the policy is the fallback")
+                        help="Let the decision model and selector choose the planner model too (default; needs --apply-selector). The fixed planner in the policy is the fallback")
     parser.add_argument("--route-judge", action=argparse.BooleanOptionalAction, default=os.environ.get("AIE_ROUTE_JUDGE", "1").strip().lower() in TRUE_VALUES,
-                        help="Let Clef and the selector choose the model that checks the With Clef lane's steps (default; needs --apply-selector). "
-                             "The Without Clef lane is always checked by the fixed reviewer in the policy")
+                        help=f"Let the decision model and selector choose the reviewer for {LANE_LABELS['clef']} (default; needs --apply-selector). "
+                             f"{LANE_LABELS['baseline']} is checked by the fixed reviewer in the policy")
     parser.add_argument("--no-replay", action="store_true", default=env_flag("AIE_NO_REPLAY"),
                         help="Decide in shadow mode but do not also run the chosen endpoints")
     parser.add_argument("--no-shadow", action="store_true", default=env_flag("AIE_NO_SHADOW"),
@@ -628,19 +644,30 @@ def scoring_uri(args: argparse.Namespace) -> str:
     if override:
         return override
     if not args.connection.exists():
-        raise SystemExit(f"No Clef endpoint configured: set CLEF_ENDPOINT_URL, or copy azure/online/connection.example.json to {args.connection.name} and fill it in.")
+        raise SystemExit(f"No legacy router endpoint configured: set CLEF_ENDPOINT_URL, or copy azure/online/connection.example.json to {args.connection.name} and fill it in.")
     return json.loads(args.connection.read_text(encoding="utf-8-sig"))["scoring_uri"]
 
 
 def build_shadow(args: argparse.Namespace, uri: str) -> ShadowSelector | None:
+    if args.router_provider == "decision-1" and (args.no_shadow or not args.apply_selector):
+        raise ValueError("The selected native decision provider requires the applied capability selector; remove --no-shadow or --no-apply-selector")
     if args.no_shadow:
         return None
     policy = Policy.load(HERE / "data" / "policy.json")
-    router = CapabilityRouter(args.shadow_url or uri, "clef-local" if args.shadow_local else args.shadow_deployment,
-                              adapter_sha256=args.shadow_adapter_sha256, local=args.shadow_local)
+    if args.router_provider == "decision-1":
+        from routing_lab.decision_one import DecisionOneRouter
+
+        router = DecisionOneRouter(args.decision_endpoint or args.llm_endpoint, args.decision_deployment,
+                                   price_per_million_tokens=args.decision_token_price)
+        adapter = None
+    else:
+        router = CapabilityRouter(args.shadow_url or uri, "clef-local" if args.shadow_local else args.shadow_deployment,
+                                  adapter_sha256=args.shadow_adapter_sha256, local=args.shadow_local)
+        adapter = args.shadow_adapter_sha256
     return ShadowSelector(router, MeasuredRegistry.load(MEASURED_REGISTRY), baseline=policy.baseline_model,
                           router_cost_usd=policy.router_cost_usd, log_path=args.runtime_dir / "shadow.jsonl",
-                          adapter_sha256=args.shadow_adapter_sha256, use_skill=args.shadow_use_skill)
+                          adapter_sha256=adapter, use_skill=args.shadow_use_skill,
+                          capture_prompts=args.capture_router_prompts)
 
 
 def main(argv: list[str] | None = None) -> None:

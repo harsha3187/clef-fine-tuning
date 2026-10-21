@@ -136,9 +136,9 @@ def decision_from_native(result: dict, taxonomy_id: str) -> Decision:
             state_tokens_dropped=usage["state_tokens_dropped"],
         )
     except (KeyError, TypeError) as exc:
-        raise ValueError("Response does not match the native Clef contract") from exc
+        raise ValueError("Response does not match the native decision contract") from exc
     if decision.probabilities is None:
-        raise ValueError("Clef must return option probabilities")
+        raise ValueError("The decision model must return option probabilities")
     skill = result["answers"].get("skill")
     if skill is not None:
         decision = CapabilityDecision(**decision.model_dump(), skill=skill["choice"],

@@ -2,7 +2,7 @@
 
 A LoRA fine-tune of **Cloudflare Clef-Flash** that reads one request and says how much language-model capability it needs:
 `low`, `medium` or `high`. It is the "System-1" router in this repository: a selector then maps its probabilities to the cheapest
-endpoint that is expected to do the job (see `docs/router-architecture.md`).
+endpoint that is expected to do the job (see `docs/router.md`).
 
 This folder holds the adapter and the classification head only. The base model is not in the repo.
 
@@ -33,7 +33,7 @@ validates the safetensors structure and the LoRA rank, confirms the base-model p
 
 ## Training data
 
-The cleaned bundle `routing-ext-v2`, built from four public routing datasets (`docs/routing-datasets.md`): LLMRouterBench, xRouteBench,
+The cleaned bundle `routing-ext-v2`, built from four public routing datasets (`docs/data-and-training.md`): LLMRouterBench, xRouteBench,
 SCOPE-60K and R2-Bench. 5,444 training rows, 787 validation and 770 calibration, across 56 source and sub-benchmark groups, after dropping subjective datasets,
 open-ended judge-scored queries and queries every model scored 0 on in hard pools. Eight sub-benchmarks (gsm8k, livecodebench, tau2, finqa, bbh,
 arenahard_math, history, boolq) were held out entirely.
@@ -61,11 +61,11 @@ too often, not too rarely, and it saves less money than version 2 did. It was no
 
 ## Use it
 
-- **Hosted:** the Azure ML endpoint, through `routing_lab.capability.CapabilityRouter` (see `docs/docker.md`).
+- **Hosted:** the Azure ML endpoint, through `routing_lab.capability.CapabilityRouter` (see `docs/deployment.md`).
 - **In a container:** `docker compose --profile local-clef up`. Mounts this folder and serves the same `/score` API (needs an NVIDIA GPU).
 - **From Python:** `clef.load("flash", snapshot="models/clef-flash-capability-ft-v3", calibrated=True)` in `routing_lab/clef.py`. It downloads
   the base model (18 GB) from Hugging Face, merges the adapter and loads the head.
-- **Another application:** call the running service's `POST /v1/select` (see `docs/docker.md`) or `POST /score` on the Clef container.
+- **Another application:** call the running service's `POST /v1/select` (see `docs/deployment.md`) or `POST /score` on the Clef container.
 
 ## Limits
 

@@ -16,7 +16,7 @@ outputs:
 command: >-
   uv sync --frozen --no-dev &&
   uv pip install --index-url https://download.pytorch.org/whl/cu126 torch==2.11.0 &&
-  uv pip install -r requirements-clef.txt &&
+  uv pip install --group clef &&
   uv run --no-sync python -m routing_lab.cli validate --data data/probes.jsonl &&
   uv run --no-sync python -m routing_lab.cli run
   --backend clef --probe --allow-model-download

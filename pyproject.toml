@@ -34,6 +34,48 @@ benchmarks = [
     "requests>=2.34.2",
 ]
 
+# Install sets for the container images and the GPU job (PEP 735). They need pip 25.1+ or uv:
+#   pip install --group app --group test       uv pip install --group clef
+# Versions are exact so image builds are reproducible; the app, test and devcontainer pins equal uv.lock for Python 3.11.
+# Keep `pydantic==2.11.7` of the hosted endpoint out of here: it mirrors azure/online/conda.yml and
+# conflicts with the project's pydantic, so docker/requirements-clef-server.txt stays a separate file.
+[dependency-groups]
+# The service image: nothing here loads a model; Clef runs on the Azure endpoint or the local Clef container.
+app = [
+    "pydantic==2.13.5",
+    "requests==2.34.2",
+    "azure-identity==1.25.3",
+]
+# What the shared test fixtures import. Docker test stage and dev container only, never the runtime image.
+test = [
+    "pytest==9.1.1",
+    "numpy==2.4.6",
+    "scipy==1.17.1",
+    "scikit-learn==1.9.1",
+]
+# Tools for working on the repository, on top of the app and test groups.
+devcontainer = [
+    "ruff==0.16.8",
+    "nbformat==5.11.1",
+    "nbclient==0.11.0",
+    "pyarrow==25.0.1",
+    "openai>=3.19.0",
+    "tqdm==4.70.1",
+    "matplotlib==3.11.2",
+    "ipykernel==7.3.0",
+    "ipywidgets==8.1.9",
+]
+# Install only on an Azure GPU. On a GPU, install torch from https://download.pytorch.org/whl/cu126 first.
+clef = [
+    "torch==2.11.0",
+    "torchvision==0.26.0",
+    "transformers==5.10.2",
+    "accelerate>=1.0",
+    "huggingface-hub",
+    "safetensors",
+    "pillow",
+]
+
 [[tool.uv.index]]
 url = "https://packagefeedproxy.microsoft.io/pypi/simple/"
 default = true

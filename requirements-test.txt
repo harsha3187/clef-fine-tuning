@@ -1,5 +1,0 @@
-# Extra packages the repository's shared test fixtures import. Test stage of the Dockerfile only; not in the runtime image.
-pytest==9.1.1
-numpy==2.4.6
-scipy==1.17.1
-scikit-learn==1.9.1

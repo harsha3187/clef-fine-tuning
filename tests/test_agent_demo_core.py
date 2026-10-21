@@ -21,6 +21,7 @@ from agent_demo.registry import ModelProfile, Registry
 from agent_demo.telemetry import Telemetry
 from agent_demo.preferences import PRESETS, Preferences
 from agent_demo.support import SupportDesk, responses_tools, router_tools
+from agent_demo.labels import LANE_LABELS, UI_COPY, label_events
 
 DATA = Path(__file__).resolve().parents[1] / "agent_demo" / "data"
 
@@ -524,6 +525,47 @@ def test_client_retries_transient_failures_and_raises_otherwise(monkeypatch):
         client.complete("m", user="u")
 
 
+@pytest.mark.parametrize("model", ["llama-4-maverick", "deepseek-v4-flash"])
+def test_json_uses_the_verified_native_chat_protocol_and_normalizes_usage(model):
+    payload = {"id": "chat-1", "choices": [{"finish_reason": "stop", "message": {"content": '{"days":[]}'}}],
+               "usage": {"prompt_tokens": 14, "completion_tokens": 5608}}
+    session = Mock()
+    session.post.return_value = response(200, payload)
+    client = AzureResponsesClient("https://r.openai.azure.com/openai/v1/", credential=FakeCredential(), session=session)
+    result = client.complete(model, system="Return JSON.", user="A trip.", json_object=True, max_output_tokens=6000)
+    call = session.post.call_args
+    assert call.args[0].endswith("/chat/completions")
+    assert call.kwargs["json"] == {
+        "model": model, "messages": [{"role": "system", "content": "Return JSON."}, {"role": "user", "content": "A trip."}],
+        "response_format": {"type": "json_object"}, "max_tokens": 6000,
+    }
+    assert result.status == "completed" and result.output_tokens == 5608 and result.input_tokens == 14
+    assert result.text == '{"days":[]}' and result.response_id == "chat-1"
+    session.post.return_value = response(200, {"status": "completed", "output": [], "usage": {}})
+    client.complete(model, system="Research.", user="A trip.", tools=[{"type": "function"}])
+    assert session.post.call_args.args[0].endswith("/responses")
+
+
+@pytest.mark.parametrize(("finish", "reason"), [("length", "max_output_tokens"), ("content_filter", "content_filter")])
+def test_native_chat_json_preserves_incomplete_status(finish, reason):
+    session = Mock()
+    session.post.return_value = response(200, {
+        "choices": [{"finish_reason": finish, "message": {"content": '{"days":['}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 4096},
+    })
+    client = AzureResponsesClient("https://r.openai.azure.com/openai/v1/", credential=FakeCredential(), session=session)
+    result = client.complete("deepseek-v4-flash", user="JSON", json_object=True)
+    assert result.status == "incomplete" and result.incomplete_reason == reason and result.output_tokens == 4096
+
+
+def test_native_chat_json_does_not_silently_drop_tools_or_response_history():
+    client = AzureResponsesClient("https://r.openai.azure.com/openai/v1/", credential=FakeCredential(), session=Mock())
+    for args in ({"tools": [{"type": "function"}]}, {"previous_response_id": "r1"}, {"input_items": []}):
+        with pytest.raises(ValueError, match="single-turn"):
+            client.complete("llama-4-maverick", user="JSON", json_object=True, **args)
+    client._session.post.assert_not_called()
+
+
 @pytest.mark.parametrize("url", ["http://r.openai.azure.com/openai/v1/", "https://evil.example.com/openai/v1/",
                                  "https://r.openai.azure.com/other/", "https://r.openai.azure.com.evil.com/openai/v1/"])
 def test_client_only_talks_to_azure_endpoints(url):
@@ -531,3 +573,89 @@ def test_client_only_talks_to_azure_endpoints(url):
         AzureResponsesClient(url)
 
 
+def test_event_labels_do_not_rename_ids_or_rewrite_user_content():
+    events = []
+    emit = label_events(events.append)
+    original = {"type": "exec", "lane": "clef", "output": "The user's text says With Clef."}
+    emit(original)
+    emit({"type": "lane_started", "lane": "baseline"})
+    assert events[0] == {**original, "lane_label": "Adaptive routing"}
+    assert events[1]["lane_label"] == "Always strongest"
+    assert "lane_label" not in original
+
+
+def test_historical_telemetry_uses_generic_labels_without_rewriting_stored_runs():
+    telemetry = Telemetry(":memory:")
+    lane = {"cost_usd": 0.1, "tokens_total": 100, "latency_ms": 1000, "reply_score": 4, "models": {}}
+    legacy = {"task_id": "legacy", "preferences": {"quality": "good", "latency": "medium", "cost": "medium"},
+              "lanes": {"clef": lane, "baseline": lane}, "checks_passed": {},
+              "saved": {k: {"pct": 0.0} for k in ("cost", "tokens", "latency")},
+              "lane_labels": {"clef": "With Clef", "baseline": "Without Clef"}}
+    raw = json.dumps(legacy)
+    telemetry._conn.execute("INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?)",
+                            ("legacy", "2026-10-01", "good", "medium", "medium", raw))
+    result = telemetry.run_aggregates()
+    assert result["lane_labels"] == LANE_LABELS
+    assert result["cost_usd"] == {"clef": 0.1, "baseline": 0.1, "saved_pct": 0.0}
+    assert telemetry._conn.execute("SELECT summary FROM runs").fetchone()[0] == raw
+    telemetry.log_run({**legacy, "task_id": "new"})
+    stored = json.loads(telemetry._conn.execute("SELECT summary FROM runs WHERE task_id='new'").fetchone()[0])
+    assert stored["lane_labels"] == LANE_LABELS
+    assert legacy["lane_labels"]["clef"] == "With Clef"
+
+
+def test_frontend_fallback_labels_match_the_backend_and_do_not_use_provider_lane_names():
+    import re
+
+    script = (Path(__file__).resolve().parents[1] / "agent_demo" / "static" / "app.js").read_text(encoding="utf-8-sig")
+    fallback = re.search(r"const DEFAULT_LANE_LABELS = \{ clef: \"([^\"]+)\", baseline: \"([^\"]+)\" \}", script)
+    assert fallback
+    assert dict(zip(("clef", "baseline"), fallback.groups(), strict=True)) == LANE_LABELS
+    assert not re.search(r"\bWith(?:out)? (?:Clef|Decision-1|\$\{routerName)", script)
+    css = (Path(__file__).resolve().parents[1] / "agent_demo" / "static" / "app.css").read_text(encoding="utf-8-sig")
+    assert "section-title itinerary-controls" in script
+    assert ".itinerary-controls { flex-wrap: wrap; }" in css
+
+
+def test_all_provider_identity_is_rendered_as_data_not_label_templates():
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "agent_demo" / "static" / "app.js").read_text(encoding="utf-8-sig")
+    assert "routerName(" not in script
+    assert not re.search(r"\bClef\b|Decision-1|\bGPT-4\.1\b", script)
+    data_renderer = script.split("function routerDetails(", 1)[1].split("function renderStatus()", 1)[0]
+    assert '"data-model-value": true' in data_renderer
+    remaining = script.replace(data_renderer, "")
+    assert ".router_name" not in remaining and ".display_name" not in remaining
+    assert 'text: uiCopy("decision_prompt")' in script
+    assert 'text: "Decision-model assessment"' in script
+    fallback = re.search(r"const DEFAULT_UI_COPY = \{(.*?)\n\};", script, re.S)
+    assert fallback
+    assert dict(re.findall(r'(\w+): "([^"]*)"', fallback.group(1))) == UI_COPY
+    html = (root / "agent_demo" / "static" / "index.html").read_text(encoding="utf-8-sig")
+    assert '<aside class="composer" aria-labelledby="composer-title">' in html
+    assert 'aria-label="Customer message"' not in html
+    assert UI_COPY["decision_model"] == "Decision model"
+    assert UI_COPY["decision_prompt"] == "Exact decision-model prompt"
+    assert not re.search(r"\bClef\b|Decision-1", " ".join(UI_COPY.values()))
+
+
+def test_router_errors_and_pricing_copy_do_not_hardcode_provider_names():
+    import ast
+    import re
+
+    from routing_lab.decision_one import DecisionOneRouter
+
+    root = Path(__file__).resolve().parents[1]
+    for relative in (("routing_lab", "decision_one.py"), ("routing_lab", "endpoint.py"),
+                     ("routing_lab", "backends.py"), ("agent_demo", "router.py")):
+        tree = ast.parse(root.joinpath(*relative).read_text(encoding="utf-8-sig"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Raise):
+                literals = [v.value for v in ast.walk(node) if isinstance(v, ast.Constant) and isinstance(v.value, str)]
+                assert not re.search(r"\bClef\b|Decision-1", " ".join(literals)), relative
+    router = DecisionOneRouter("https://r.services.ai.azure.com")
+    assert router.display_name == "Microsoft Decision-1"
+    assert "Decision-1" not in router.cost_note and "Clef" not in router.cost_note
+    assert "$0.042" in router.cost_note

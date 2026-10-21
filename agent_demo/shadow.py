@@ -1,6 +1,6 @@
-﻿"""Shadow mode: run the capability router and the selector next to the agent, change nothing, and record what they would do.
+"""Shadow mode: run the capability router and the selector next to the agent, change nothing, and record what they would do.
 
-At every model-call boundary (the plan and each step) the request goes to Clef, the selector picks an endpoint from the
+At every model-call boundary (the plan and each step) the request goes to the decision model, and the selector picks an endpoint from the
 measured registry, and the decision is logged. The two lanes keep running exactly as before, so nothing here can
 alter an outcome or delay a run: decisions are made on a background thread, failures become events, and the final
 comparison is made after both lanes have finished.
@@ -16,9 +16,10 @@ import json
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+from agent_demo.labels import LANE_LABELS
 
 from routing_lab.backends import CAPABILITY_PROMPT_VERSION
 from routing_lab.selector import SELECTOR_VERSION, Constraints, Endpoint, MeasuredRegistry, Selection, Settings, select
@@ -27,7 +28,7 @@ Emit = Callable[[dict[str, Any]], None]
 JOIN_SECONDS = 45.0
 REPLAY_JOIN_SECONDS = 240.0
 SHOWN_ALTERNATIVES = 4
-AUX_SKILLS = {"planner": "reasoning", "judge": "reasoning"}  # the agent's own calls that Clef also routes
+AUX_SKILLS = {"planner": "reasoning", "judge": "reasoning"}
 DISPLAY = {"gpt-5.6-sol": "GPT-5.6 Sol", "gpt-5.6-terra": "GPT-5.6 Terra", "gpt-5.6-luna": "GPT-5.6 Luna", "gpt-5.4-nano": "GPT-5.4 Nano",
            "gpt-4.1": "GPT-4.1", "gpt-oss-120b": "gpt-oss-120B", "deepseek-v4-pro": "DeepSeek V4 Pro", "deepseek-v4-flash": "DeepSeek V4 Flash",
            "llama-4-maverick": "Llama 4 Maverick", "phi-4": "Phi-4"}
@@ -50,18 +51,22 @@ class ShadowItem:
     needs_tools: bool
     input_tokens: int
     output_tokens: int
+    needs_json: bool = False
 
 
 class ShadowSelector:
     """Capability router plus selector. `decide` never raises: an outage becomes an error entry."""
 
     def __init__(self, router: Any, registry: MeasuredRegistry, *, baseline: str, router_cost_usd: float,
-                 log_path: Path | None = None, adapter_sha256: str | None = None, use_skill: bool = True) -> None:
+                 log_path: Path | None = None, adapter_sha256: str | None = None, use_skill: bool = True,
+                 capture_prompts: bool = False) -> None:
         """`use_skill=False` ignores the skill head, for a router fine-tuned without skill labels (its skill answer is untrained)."""
         self.router, self.registry, self.baseline, self.use_skill = router, registry, baseline, use_skill
         self.router_cost_usd = router_cost_usd
         self.log_path = log_path
+        self.capture_prompts = capture_prompts
         self.versions = {"router": getattr(router, "deployment", None), "adapter_sha256": adapter_sha256,
+                         "provider": getattr(router, "provider", "clef"), "display_name": getattr(router, "display_name", "Clef"),
                          "prompt": CAPABILITY_PROMPT_VERSION, "skill_head_used": use_skill,
                          "registry": registry.version, "selector": SELECTOR_VERSION}
         self.last: dict[str, Any] | None = None  # outcome of the latest router call, for the status badge
@@ -84,10 +89,10 @@ class ShadowSelector:
         return {"writing": 1.0} if item.kind == "reply" else None
 
     def reselect(self, event: dict[str, Any], item: ShadowItem, settings: Settings, allow: frozenset[str] | None = None) -> Selection:
-        """Choose again from the same Clef answer, with a higher floor or fewer endpoints, without calling Clef a second time."""
+        """Choose again from the existing probabilities, without another decision-model call."""
         skills = event["skill_probabilities"] if self.use_skill else event.get("skill_hint")
         return select(self.registry.endpoints, self.registry.rate, event["tier_probabilities"], skills, settings,
-                      Constraints(allow, item.needs_tools, item.input_tokens, item.output_tokens))
+                      Constraints(allow, item.needs_tools, item.input_tokens, item.output_tokens, item.needs_json))
 
     def warm_up(self) -> None:
         """Pay the first call's connection and token setup before a user is waiting (it took about 10 s cold)."""
@@ -101,19 +106,31 @@ class ShadowSelector:
 
     def decide(self, item: ShadowItem, settings: Settings, allow: frozenset[str] | None = None) -> dict[str, Any]:
         started = time.perf_counter()
+        captured: dict[str, Any] = {}
+        constraints = Constraints(allow, item.needs_tools, item.input_tokens, item.output_tokens, item.needs_json)
         try:
             with self._lock:
+                if self.capture_prompts:
+                    captured = {
+                        "router_request": self.router.request_payload(item.text),
+                        "selection_inputs": {
+                            "settings": asdict(settings),
+                            "constraints": {**asdict(constraints), "allow": sorted(allow) if allow is not None else None},
+                        },
+                    }
                 result = self.router.classify(item.text)
             skills = self.skills_for(item, result)
             selection = select(self.registry.endpoints, self.registry.rate, result.tier_probabilities,
-                               skills, settings,
-                               Constraints(allow, item.needs_tools, item.input_tokens, item.output_tokens))
+                               skills, settings, constraints)
         except Exception as error:  # noqa: BLE001 - shadow mode must never break or slow the agent
             self.last = {"ok": False, "latency_ms": round((time.perf_counter() - started) * 1000, 1)}
             return {"type": "shadow_error", "key": item.key, "kind": item.kind,
-                    "error": f"{type(error).__name__}: {str(error)[:160]}", "versions": self.versions}
+                    "error": f"{type(error).__name__}: {str(error)[:160]}", "versions": self.versions, **captured}
         self.last = {"ok": True, "latency_ms": result.latency_ms}
-        return self._event(item, result, selection, (time.perf_counter() - started) * 1000, skills)
+        event = self._event(item, result, selection, (time.perf_counter() - started) * 1000, skills)
+        if self.capture_prompts:
+            event.update(captured, candidates=[asdict(c) for c in selection.candidates])
+        return event
 
     def _event(self, item: ShadowItem, result: Any, selection: Selection, total_ms: float,
                skills: dict[str, float] | None = None) -> dict[str, Any]:
@@ -121,10 +138,14 @@ class ShadowSelector:
         base = next((c for c in selection.candidates if c.endpoint == self.baseline), None)
         return {
             "type": "shadow_decision", "key": item.key, "kind": item.kind, "needs_tools": item.needs_tools,
+            "needs_json": item.needs_json,
             "tier": result.tier, "tier_probabilities": result.tier_probabilities, "skill": result.skill,
             "skill_probabilities": result.skill_probabilities, "skill_used": self.use_skill, "skill_hint": None if self.use_skill else skills, "confidence": round(result.confidence, 4),
             "router_ms": result.latency_ms, "decision_ms": round(total_ms, 1),
+            "input_tokens": result.input_tokens, "output_tokens": result.output_tokens,
+            "router_cost_usd": result.cost_usd if result.cost_usd is not None else self.router_cost_usd,
             "choice": selection.choice, "expected_success": selection.expected_success,
+            "json_api": self.endpoint(selection.choice).json_api if selection.choice and item.needs_json else None,
             "floor": selection.floor, "effective_floor": selection.effective_floor, "below_floor": selection.below_floor,
             "uncertain": selection.uncertain, "uncertainty_reasons": selection.uncertainty_reasons,
             "reason": selection.reason,
@@ -222,15 +243,17 @@ def replay_summary(rows: list[dict[str, Any]], replay: dict[str, Any], checks: d
     """
     steps = replay["steps"]
     ran = [s for s in steps.values() if s["status"] == "ok"]
+    attempted = [s for s in steps.values() if s["status"] != "skipped"]
     base_cost_of = {r["key"]: r["actual"]["cost_usd"] for r in rows if "actual" in r}
     base_score_of = {r["key"]: r["actual"]["score"] for r in rows if "actual" in r}
     paired = [(s["score"], base_score_of.get(s["key"])) for s in ran if s["score"] is not None and base_score_of.get(s["key"]) is not None]
     return {
         "steps_run": len(ran), "failed": sum(s["status"] == "failed" for s in steps.values()),
+        "lane_labels": LANE_LABELS.copy(),
         "skipped": sum(s["status"] == "skipped" for s in steps.values()),
-        "cost_usd": round(sum(s["cost_usd"] for s in ran), 6),
-        "baseline_cost_usd": round(sum(base_cost_of.get(s["key"], 0.0) for s in ran), 6),
-        "judge_cost_usd": round(sum(s["judge_cost_usd"] for s in ran), 6),
+        "cost_usd": round(sum(s["cost_usd"] for s in attempted), 6),
+        "baseline_cost_usd": round(sum(base_cost_of.get(s["key"], 0.0) for s in attempted), 6),
+        "judge_cost_usd": round(sum(s["judge_cost_usd"] for s in attempted), 6),
         "mean_score": round(sum(a for a, _ in paired) / len(paired), 2) if paired else None,
         "baseline_mean_score": round(sum(b for _, b in paired) / len(paired), 2) if paired else None,
         "scored_steps": len(paired), "below_baseline": sum(a < b for a, b in paired),
@@ -249,7 +272,7 @@ def summarize(selector: ShadowSelector, decisions: dict[str, dict[str, Any]], ac
               gate_min: int = 4) -> dict[str, Any]:
     """Line up each shadow decision with what actually ran, and price the selector's choices on the same tokens.
 
-    `actuals` maps a step key to the always-strongest lane's observed tokens and cost and the Clef lane's model.
+    `actuals` maps a step key to the baseline's observed tokens and cost and the adaptive lane's model.
     """
     rows: list[dict[str, Any]] = []
     est_total = n_decisions = agree = unpriced = 0
@@ -259,14 +282,15 @@ def summarize(selector: ShadowSelector, decisions: dict[str, dict[str, Any]], ac
         row: dict[str, Any] = {"key": key, "kind": decision["kind"], "decision": decision}
         if decision["type"] == "shadow_decision" and actual is not None:
             est = selector.price(decision["choice"], actual["tokens_in"], actual["tokens_out"]) if decision["choice"] else None
+            router_cost = decision.get("router_cost_usd", selector.router_cost_usd)
             row.update(actual={k: actual.get(k) for k in ("model", "tokens_in", "tokens_out", "cost_usd", "score", "clef_lane_model")},
-                       est_cost_usd=est, router_cost_usd=selector.router_cost_usd)
+                       est_cost_usd=est, router_cost_usd=router_cost)
             if est is None:
                 unpriced += 1
             else:
-                est_total += est + selector.router_cost_usd
+                est_total += est + router_cost
                 n_decisions += 1
-                row["saved_vs_baseline"] = _saved(actual["cost_usd"], est + selector.router_cost_usd)
+                row["saved_vs_baseline"] = _saved(actual["cost_usd"], est + router_cost)
             if decision["expected_success"] is not None:
                 expected.append(decision["expected_success"])
             if actual.get("clef_lane_model") and actual["clef_lane_model"] == decision["choice"]:
@@ -281,13 +305,14 @@ def summarize(selector: ShadowSelector, decisions: dict[str, dict[str, Any]], ac
     base_total = sum(r["actual"]["cost_usd"] for r in rows if "actual" in r and r.get("est_cost_usd") is not None)
     return {
         "rows": rows, "decisions": n_decisions, "errors": errors, "unpriced": unpriced,
+        "lane_labels": LANE_LABELS.copy(),
         "selector_est_cost_usd": round(est_total, 6), "priced_baseline_cost_usd": round(base_total, 6),
         "saved_vs_baseline": _saved(base_total, est_total) if base_total else None,
         "clef_lane_cost_usd": round(clef_lane_cost, 6), "baseline_lane_cost_usd": round(baseline_lane_cost, 6),
         "mean_expected_success": round(sum(expected) / len(expected), 4) if expected else None,
         "same_choice_as_clef_lane": agree, "versions": selector.versions,
         "replay": replay_summary(rows, replay, checks or {}, gate_min) if replay is not None else None,
-        "note": "Counterfactual: the endpoint the selector chose, priced on the tokens the always-strongest lane used. "
+        "note": f"Counterfactual: the endpoint the selector chose, priced on the tokens {LANE_LABELS['baseline']} used. "
                 + ("Replayed steps were run on the chosen endpoint, judged by the same reviewer, and checked against the same expected outcomes."
                    if replay is not None else "Quality is the selector's expected success from measured pass rates; nothing was re-run."),
     }

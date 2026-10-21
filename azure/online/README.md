@@ -6,7 +6,7 @@ description: Scoring contract and approval-gated GPU serving configuration for C
 ## Deployment status
 
 Deployed in East US 2 on one H100 and verified live. It bills continuously until the deployment is deleted.
-See the [endpoint guide](../../docs/endpoint.md) for sizing, cost, deployment and verification.
+See the [endpoint guide](../../docs/deployment.md#azure-hosted-clef-with-a-local-notebook) for sizing, cost, deployment and verification.
 
 This serves the off-the-shelf Clef-Flash checkpoint (`Cloudflare/clef-flash`, pinned revision).
 No training, calibration or fine-tuning is involved. `init()` loads once per worker on CUDA and

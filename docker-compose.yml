@@ -4,7 +4,7 @@ name: aie
 #
 #   docker compose up --build                       the service on http://localhost:8765
 #   docker compose exec app az login --use-device-code      once, to let it call Azure (kept in a volume)
-#   docker compose --profile local-clef up          also run Clef itself in a container (needs an NVIDIA GPU); see docs/docker.md
+#   docker compose --profile local-clef up          also run Clef itself in a container (needs an NVIDIA GPU); see docs/deployment.md
 #
 # Settings go in a `.env` file next to this one (see .env.example). It is not committed.
 
@@ -26,9 +26,12 @@ services:
     environment:
       AIE_AZURE_AUTH: ${AIE_AZURE_AUTH:-default}     # service principal, managed identity, then the Azure CLI session
       AIE_ALLOWED_HOSTS: ${AIE_ALLOWED_HOSTS:-}      # extra Host names for other containers that call this one
-      AIE_APPLY_SELECTOR: ${AIE_APPLY_SELECTOR:-1}   # 1: the With Clef lane runs on the endpoints Clef and the selector choose
+      AIE_APPLY_SELECTOR: ${AIE_APPLY_SELECTOR:-1}   # 1: Adaptive routing runs on the endpoints the decision model and selector choose
       AIE_ROUTE_PLANNER: ${AIE_ROUTE_PLANNER:-1}     # 1: Clef also chooses the planner model (0: the fixed planner in the policy)
-      AIE_ROUTE_JUDGE: ${AIE_ROUTE_JUDGE:-1}         # 1: Clef also chooses the model that checks the With Clef lane (0: the fixed reviewer)
+      AIE_ROUTE_JUDGE: ${AIE_ROUTE_JUDGE:-1}         # 1: the selector chooses the Adaptive routing reviewer (0: the fixed reviewer)
+      AIE_ROUTER_PROVIDER: ${AIE_ROUTER_PROVIDER:-clef}
+      AIE_DECISION_DEPLOYMENT: ${AIE_DECISION_DEPLOYMENT:-decision-1}
+      AIE_DECISION_TOKEN_PRICE: ${AIE_DECISION_TOKEN_PRICE:-0.042}
       AIE_SHADOW_LOCAL: ${AIE_SHADOW_LOCAL:-}        # 1: the shadow router is the local Clef container below
       AIE_SHADOW_URL: ${AIE_SHADOW_URL:-}            # e.g. http://clef-server:5001/score
       CLEF_ENDPOINT_URL: ${CLEF_ENDPOINT_URL:-}      # overrides azure/online/connection.json

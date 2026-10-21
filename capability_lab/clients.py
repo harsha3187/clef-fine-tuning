@@ -32,6 +32,7 @@ class ModelSpec:
     price_out: float
     verified: bool
     price_source: str
+    json_api: str | None = None
 
     def cost(self, tokens_in: int, tokens_out: int) -> float:
         return tokens_in * self.price_in / 1e6 + tokens_out * self.price_out / 1e6

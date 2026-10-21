@@ -7,12 +7,14 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import requests
 
 ENTRA_SCOPE = "https://ai.azure.com/.default"
 _BASE = re.compile(r"https://[a-z0-9-]+\.(?:services\.ai\.azure\.com|openai\.azure\.com)/openai/v1/")
+MODEL_FORMATS = Path(__file__).resolve().parents[1] / "capability_lab" / "models.json"
 
 
 SEARCH_SYSTEM = ("Search the web and answer the query with concrete, current facts: names, neighbourhoods, typical "
@@ -33,6 +35,8 @@ class LLMResult:
     response_id: str | None = None
     function_calls: list[dict[str, Any]] = field(default_factory=list)
     sources: list[dict[str, str]] = field(default_factory=list)
+    incomplete_reason: str | None = None
+    refusal: str | None = None
 
 
 class AzureResponsesClient:
@@ -47,6 +51,10 @@ class AzureResponsesClient:
         self._credential = credential
         self._token: Any = None
         self._lock = threading.Lock()
+        models = json.loads(MODEL_FORMATS.read_text(encoding="utf-8-sig"))["models"]
+        self._json_apis = {m["deployment"]: m["json_api"] for m in models if m.get("json_api") is not None}
+        if any(api not in ("responses", "chat") for api in self._json_apis.values()):
+            raise ValueError("Model json_api must be responses, chat, or null")
 
     def _bearer(self) -> str:
         with self._lock:
@@ -73,18 +81,26 @@ class AzureResponsesClient:
             body["tools"] = tools
         if json_object:
             body["text"] = {"format": {"type": "json_object"}}
+        path = "responses"
+        if json_object and self._json_apis.get(deployment) == "chat":
+            if tools or previous_response_id or input_items is not None:
+                raise ValueError("Native Chat JSON supports only single-turn calls without tools or response history")
+            path = "chat/completions"
+            body = {"model": deployment, "messages": items, "max_tokens": max_output_tokens,
+                    "response_format": {"type": "json_object"}}
         started = time.perf_counter()
         last = ""
         for attempt in range(self._retries + 1):
             try:
                 response = self._session.post(
-                    self.base_url + "responses", json=body, timeout=self._timeout, allow_redirects=False,
+                    self.base_url + path, json=body, timeout=self._timeout, allow_redirects=False,
                     headers={"Authorization": "Bearer " + self._bearer(), "Content-Type": "application/json"})
             except requests.RequestException as error:
                 last = type(error).__name__
             else:
                 if response.status_code == 200:
-                    return self._parse(response.json(), (time.perf_counter() - started) * 1000)
+                    parse = self._parse_chat if path == "chat/completions" else self._parse
+                    return parse(response.json(), (time.perf_counter() - started) * 1000)
                 last = f"HTTP {response.status_code}"
                 if response.status_code not in (429, 500, 502, 503, 504):
                     raise LLMError(f"{deployment} returned {last}: {response.text[:200]}")
@@ -98,11 +114,30 @@ class AzureResponsesClient:
             tools=[{"type": "web_search_preview", "search_context_size": "low"}])
 
     @staticmethod
+    def _parse_chat(payload: dict[str, Any], latency_ms: float) -> LLMResult:
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise LLMError("Chat completion returned no choices")
+        choice = choices[0]
+        message, usage = choice["message"], payload.get("usage") or {}
+        finish = choice.get("finish_reason")
+        reason = None if finish == "stop" else "max_output_tokens" if finish == "length" else finish or "unknown"
+        return LLMResult(
+            (message.get("content") or "").strip(), int(usage.get("prompt_tokens", 0)),
+            int(usage.get("completion_tokens", 0)), round(latency_ms, 1),
+            "completed" if finish == "stop" else "incomplete", payload.get("id"),
+            incomplete_reason=reason, refusal=message.get("refusal"),
+        )
+
+    @staticmethod
     def _parse(payload: dict[str, Any], latency_ms: float) -> LLMResult:
         text, calls, sources = [], [], []
+        refusal = None
         for item in payload.get("output", []):
             if item.get("type") == "message":
                 for part in item.get("content", []):
+                    if part.get("type") == "refusal":
+                        refusal = str(part.get("refusal") or "The model refused the request.")
                     if part.get("type") != "output_text":
                         continue
                     text.append(part.get("text", ""))
@@ -116,5 +151,7 @@ class AzureResponsesClient:
                     args = {}
                 calls.append({"call_id": item.get("call_id"), "name": item.get("name"), "arguments": args})
         usage = payload.get("usage") or {}
+        incomplete = payload.get("incomplete_details") or {}
         return LLMResult("".join(text).strip(), int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0)),
-                         round(latency_ms, 1), str(payload.get("status", "")), payload.get("id"), calls, sources)
+                         round(latency_ms, 1), str(payload.get("status", "")), payload.get("id"), calls, sources,
+                         incomplete_reason=incomplete.get("reason"), refusal=refusal)

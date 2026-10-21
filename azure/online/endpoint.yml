@@ -1,5 +1,5 @@
 $schema: https://azuremlschemas.azureedge.net/latest/managedOnlineEndpoint.schema.json
-name: clef-routing-exp
+name: my-clef-endpoint
 description: Approval-gated off-the-shelf Clef-Flash routing experiment
 auth_mode: aad_token
 public_network_access: enabled

@@ -5,7 +5,7 @@ set -eu
 model_dir="${CLEF_MODEL_DIR:-/models}"
 echo "checking the model in $model_dir"
 if ! PYTHONPATH=/app/code python -m routing_lab.verify_model "$model_dir"; then
-  echo "The model folder is not usable (see above). Mount models/clef-flash-capability-ft-v3 at $model_dir, and run 'git lfs pull' if the weights are pointer files." >&2
+  echo "The model folder is not usable (see above). Mount models/clef-flash-capability-ft-v3 at $model_dir with the weight files in place (see models/README.md)." >&2
   exit 1
 fi
 
